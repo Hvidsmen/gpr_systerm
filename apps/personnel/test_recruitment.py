@@ -1,4 +1,4 @@
-from datetime import timedelta
+from datetime import date,datetime,timedelta
 from io import BytesIO
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -752,7 +752,7 @@ class RecruitmentTests(TestCase):
         self.assertNotContains(shop,'href="#recruitment-requests"')
         self.assertContains(shop,reverse('personnel:recruitment_pool_create'))
         self.assertContains(shop,'Добавить кандидата')
-        self.assertContains(shop,'Согласование руководителя');self.assertContains(shop,reverse('personnel:recruitment_candidate_card',args=[pool.pk]))
+        self.assertContains(shop,'Направлен на согласование Заказчику');self.assertContains(shop,reverse('personnel:recruitment_candidate_card',args=[pool.pk]))
         self.assertContains(shop,reverse('personnel:recruitment_candidate_inline',args=[pool.pk]))
         self.assertNotContains(shop,'data-candidate-row=',html=False)
         requests=self.client.get(reverse('personnel:recruitment_requests'))
@@ -761,7 +761,7 @@ class RecruitmentTests(TestCase):
         self.assertNotContains(requests,'id="recruitment-requests"')
         card=self.client.get(reverse('personnel:recruitment_candidate_card',args=[pool.pk]))
         self.assertContains(card,pool.full_name);self.assertContains(card,'История воронки')
-        self.assertContains(card,f'Заявка №{candidate.request_id}');self.assertContains(card,'Кандидат: Согласование руководителя.')
+        self.assertContains(card,f'Заявка №{candidate.request_id}');self.assertContains(card,'Кандидат: Направлен на согласование Заказчику.')
         rejected=self.client.get(reverse('personnel:recruitment_list'),{'candidate_stage':'rejected'})
         self.assertNotContains(rejected,pool.full_name)
         self.assertContains(rejected,'recruitment-funnel-card active',count=1,html=False)
@@ -1034,6 +1034,46 @@ class RecruitmentTests(TestCase):
         response=self.client.post(reverse('personnel:recruitment_candidate_stage',args=[pool.pk]),{'stage':'UNKNOWN'})
         self.assertEqual(response.status_code,400)
         pool.refresh_from_db();self.assertEqual(pool.stage,'NEW')
+
+    def test_approval_route_advances_in_order_and_records_completed_checks(self):
+        candidate=self.candidate(status='MANAGER_APPROVAL',ready_on=None);pool=candidate.pool_candidate
+        self.client.force_login(self.recruiter)
+        url=reverse('personnel:recruitment_candidate_stage_advance',args=[pool.pk])
+        expected=[
+            ('SECURITY_CHECK','manager_approved'),
+            ('MEDICAL_DOCUMENTS','security_approved'),
+            ('PASS_PROCESSING','medical_exam_passed'),
+            ('READY','ready_for_arrival'),
+        ]
+        for stage,flag in expected:
+            response=self.client.post(url)
+            self.assertRedirects(response,reverse('personnel:recruitment_list'),fetch_redirect_response=False)
+            pool.refresh_from_db();self.assertEqual(pool.stage,stage);self.assertTrue(getattr(pool,flag))
+        self.assertEqual(TalentPoolStageEvent.objects.filter(candidate=pool).count(),4)
+        response=self.client.post(url,{'return_to':'card'})
+        self.assertRedirects(response,reverse('personnel:recruitment_candidate_card',args=[pool.pk]),fetch_redirect_response=False)
+        pool.refresh_from_db();self.assertEqual(pool.stage,'READY')
+
+    def test_approval_route_prevents_skipping_and_marks_overdue_stage(self):
+        from .recruitment_stage_flow import stage_status
+        candidate=self.candidate(status='MANAGER_APPROVAL',ready_on=None);pool=candidate.pool_candidate
+        pool.stage_started_at=timezone.now()-timedelta(days=5);pool.save(update_fields=['stage_started_at','updated_at'])
+        status=stage_status(pool)
+        self.assertTrue(status['overdue']);self.assertEqual(status['overdue_days'],2)
+        self.client.force_login(self.recruiter)
+        skipped=self.client.post(reverse('personnel:recruitment_candidate_stage',args=[pool.pk]),{'stage':'MEDICAL_DOCUMENTS'})
+        self.assertEqual(skipped.status_code,400)
+        inline=self.client.get(reverse('personnel:recruitment_candidate_inline',args=[pool.pk]))
+        self.assertContains(inline,'Этап 1 из 5');self.assertContains(inline,'Просрочено на 2 дн.')
+        self.assertContains(inline,'Этап выполнен → Направлен на согласование в СЭБ')
+
+    def test_medical_stage_deadline_counts_working_days(self):
+        from .recruitment_stage_flow import stage_status
+        candidate=self.candidate(status='MEDICAL_DOCUMENTS',ready_on=None);pool=candidate.pool_candidate
+        pool.stage_started_at=timezone.make_aware(datetime(2026,11,23,9,0));pool.save(update_fields=['stage_started_at','updated_at'])
+        status=stage_status(pool,today=date(2026,11,23))
+        self.assertEqual(status['deadline'].isoformat(),'2026-12-07')
+        self.assertEqual((status['limit'],status['unit']),(10,'рабочих дней'))
     def test_manual_pool_card_saves_store_fields(self):
         from .models import RecruitmentSpecialist,TalentPoolCandidate
         specialist=RecruitmentSpecialist.objects.create(company=self.company,name='Петрова',user=self.recruiter)

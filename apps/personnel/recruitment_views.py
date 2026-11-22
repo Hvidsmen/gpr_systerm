@@ -17,12 +17,15 @@ from .models import (RecruitmentRequest,RecruitmentCandidate,RecruitmentSpeciali
 from . import recruitment as service
 from .recruitment_forms import (RequestForm,CandidateForm,ArrivalForm,RevisionForm,ReasonForm,TalentPoolForm,
     TalentPoolImportForm,BulkArrivalCommonForm,BulkArrivalRowForm,RecruiterAssignmentForm,RecruitmentSpecialistForm)
-from .recruitment_models import POOL_UNAVAILABLE_STAGES,RECRUITMENT_SYSTEM_STAGES,RECRUITMENT_TERMINAL_STAGES
+from .recruitment_models import (POOL_UNAVAILABLE_STAGES,RECRUITMENT_SYSTEM_STAGES,RECRUITMENT_TERMINAL_STAGES,
+    RECRUITMENT_APPROVAL_FLOW)
+from .recruitment_stage_flow import (WorkingDayCalendar,advance as advance_approval_stage,
+    allowed_manual_stage,stage_status)
 from .recruitment_employment import REVIEW_KEY,link_candidate,remove_employee_from_other_reviews,review_employee_ids,review_employees
 
 
 FUNNEL_GROUPS=[
-    ('work','В работе',{'NEW','SCREENING','HR_INTERVIEW','MANAGER_APPROVAL','SECURITY_CHECK','MEDICAL_DOCUMENTS'}),
+    ('work','В работе',{'NEW','SCREENING','HR_INTERVIEW','MANAGER_APPROVAL','SECURITY_CHECK','MEDICAL_DOCUMENTS','PASS_PROCESSING'}),
     ('selected','Магазин',{'SELECTED','READY','RESERVE'}),
     ('transferred','Поставлены на заезд',{'TRANSFERRED'}),
     ('approved','Не заехали',{'ARRIVAL_APPROVED'}),
@@ -69,6 +72,7 @@ def _position_funnel_summary(candidate_rows,request_rows,application_rows):
         item=ensure(key,label);item['candidate_count']+=1
         item['people'].append({'pk':row['pk'],'full_name':row['full_name'],'stage':row['stage'],'stage_label':stage_labels[row['stage']],
             'source_data':row['source_data'],
+            'stage_sla':row.get('stage_sla',{'managed':False}),
             'construction_object':(application['request__construction_object__name'] if application else
                 row['construction_object__name'] or (row['source_data'] or {}).get('construction_site','')),
             'request_id':application['request_id'] if application else None,
@@ -249,7 +253,9 @@ def request_list(request,recruitment_page='bank'):
         elif pool_state!='all':candidates=candidates.filter(archived_at__isnull=True)
     else:candidates=candidates.filter(archived_at__isnull=True)
     if recruitment_page=='ready':candidates=candidates.filter(stage='TRANSFERRED')
-    candidate_rows=list(candidates.values('pk','full_name','stage','position_id','position__name','construction_object__name','source_data'))
+    candidate_rows=list(candidates.values('pk','company_id','full_name','stage','stage_started_at','position_id','position__name','construction_object__name','source_data'))
+    work_calendar=WorkingDayCalendar(request.user.company_id)
+    for candidate_row in candidate_rows:candidate_row['stage_sla']=stage_status(candidate_row,calendar=work_calendar)
     candidate_ids=[row['pk'] for row in candidate_rows]
     if recruitment_page=='ready':
         active_arrivals=MovementReviewRequest.objects.filter(company=request.user.company,kind='ARRIVAL').exclude(
@@ -367,7 +373,8 @@ def candidate_card(request,pk):
         'source_events':source_events,'source_applications':source_applications,'stage_events':stage_events,
         'has_applications':bool(row.vacancy_candidates.all()),'employment_candidates':employment_candidates,
         'employment_review':(row.source_data or {}).get(REVIEW_KEY),'employment_return_to':'card',
-        'employment_can_link':role_code(request.user) in service.RECRUIT})
+        'employment_can_link':role_code(request.user) in service.RECRUIT,
+        'stage_sla':stage_status(row),'approval_flow':RECRUITMENT_APPROVAL_FLOW})
 
 
 @login_required
@@ -398,7 +405,7 @@ def candidate_inline(request,pk):
         'can_administer_pool':role_code(request.user)=='ADMIN' and inline_source!='ready',
         'inline_source':inline_source,'saved':saved,'employment_candidates':review_employees(row),
         'employment_review':(row.source_data or {}).get(REVIEW_KEY),'employment_return_to':'list',
-        'employment_can_link':can_edit},status=status)
+        'employment_can_link':can_edit,'stage_sla':stage_status(row)},status=status)
 
 
 @login_required
@@ -437,11 +444,28 @@ def candidate_stage_update(request,pk):
         if row.stage in RECRUITMENT_SYSTEM_STAGES:return JsonResponse({'error':'Системный этап изменяется автоматически.'},status=400)
         previous=row.stage
         if previous!=stage:
+            if not allowed_manual_stage(previous,stage):
+                return JsonResponse({'error':'Этапы согласования проходят по очереди. Используйте кнопку «Этап выполнен».'},status=400)
             row.stage=stage;row.is_active=stage not in POOL_UNAVAILABLE_STAGES
             row.save(update_fields=['stage','is_active','updated_at'])
             TalentPoolStageEvent.objects.create(company=request.user.company,candidate=row,from_stage=previous,
                 to_stage=stage,actor=request.user,note=note)
     return JsonResponse({'id':row.pk,'stage':row.stage,'stage_label':row.get_stage_display()})
+
+
+@login_required
+@require_POST
+def candidate_stage_advance(request,pk):
+    require_roles(request.user,service.RECRUIT)
+    try:
+        row=advance_approval_stage(pk,request.user.company,request.user,request.POST.get('note',''))
+    except TalentPoolCandidate.DoesNotExist:raise Http404
+    except ValidationError as exc:
+        messages.error(request,'; '.join(exc.messages))
+    else:
+        messages.success(request,f'{row.full_name}: установлен этап «{row.get_stage_display()}».')
+    if request.POST.get('return_to')=='card':return redirect('personnel:recruitment_candidate_card',pk=pk)
+    return redirect('personnel:recruitment_list')
 
 
 @login_required

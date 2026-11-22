@@ -33,9 +33,10 @@ PLAN_KEYS=['number','project','construction_site','op','block','department_1','d
     'actual_arrival_flag','employment_date','vacancy_days','source','notes']
 PROFILE_KEYS={'position','construction_site','birth_date','passport','phone','manager_approval','security_approval','skzi_until',
     'medical_exam','pass_documents','base_city','readiness','dudinka_arrival','responsible_hr','agency','notes'}
-STAGE_ORDER={'NEW':0,'HR_INTERVIEW':1,'MANAGER_APPROVAL':2,'SECURITY_CHECK':3,'MEDICAL_DOCUMENTS':4,'SELECTED':5,
-    'READY':6,'TRANSFERRED':7,'ARRIVAL_APPROVED':8,'ARRIVED':9,'RESERVE':5,'REJECTED':10,'WITHDRAWN':10,
-    'NOT_REQUIRED':10,'NO_SHOW':10}
+STAGE_ORDER={'NEW':0,'SCREENING':1,'HR_INTERVIEW':2,'MANAGER_APPROVAL':3,'SECURITY_CHECK':4,
+    'MEDICAL_DOCUMENTS':5,'PASS_PROCESSING':6,'SELECTED':7,'READY':8,'TRANSFERRED':9,
+    'ARRIVAL_APPROVED':10,'ARRIVED':11,'EMPLOYED':12,'RESERVE':7,'REJECTED':13,'WITHDRAWN':13,
+    'NOT_REQUIRED':13,'NO_SHOW':13}
 STAGE_LABELS=dict(RECRUITMENT_STAGES)
 
 
@@ -102,7 +103,9 @@ def _plan_stage(data):
         return 'REJECTED'
     if data.get('actual_arrival'):return 'ARRIVED'
     if data.get('planned_arrival') or data.get('tickets_requested'):return 'TRANSFERRED'
-    if any(data.get(key) for key in ('pass_received','pass_submitted','medical_result','medical_sent')):return 'MEDICAL_DOCUMENTS'
+    if data.get('pass_received'):return 'READY'
+    if data.get('pass_submitted'):return 'PASS_PROCESSING'
+    if any(data.get(key) for key in ('medical_result','medical_sent')):return 'MEDICAL_DOCUMENTS'
     if any(data.get(key) for key in ('security_result','security_sent')):return 'SECURITY_CHECK'
     if any(data.get(key) for key in ('customer_approval','sent_to_customer')):return 'MANAGER_APPROVAL'
     return 'NEW'

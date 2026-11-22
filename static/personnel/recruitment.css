@@ -22,6 +22,14 @@
 .candidate-inline-card{transition:border-color .15s,box-shadow .15s}
 .candidate-inline-card.is-dirty{border-color:#d6a72c;box-shadow:0 0 0 2px rgb(214 167 44 / 12%)}
 .candidate-inline-card.is-save-error{border-color:#dc6969}
+.recruitment-stage-sla{margin:.55rem 0;padding:.65rem;border:1px solid #cfe0e9;border-left:4px solid #1688a5;border-radius:.45rem;background:#f8fbfd}
+.recruitment-stage-sla-danger{border-left-color:#c64040;background:#fff6f6}.recruitment-stage-sla-warning{border-left-color:#c39019;background:#fffaf0}.recruitment-stage-sla-success{border-left-color:#2b8a57;background:#f3fbf6}
+.recruitment-stage-sla-summary{display:flex;justify-content:space-between;align-items:center;gap:.6rem;flex-wrap:wrap;font-size:.78rem}
+.recruitment-stage-flow{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:.35rem;margin:.55rem 0;padding:0;list-style:none}
+.recruitment-stage-flow li{display:flex;align-items:center;gap:.3rem;color:#708391;font-size:.67rem;line-height:1.15}.recruitment-stage-flow li>span{display:inline-grid;place-items:center;min-width:1.35rem;height:1.35rem;border:1px solid #b8cbd5;border-radius:50%;background:#fff;font-weight:700}
+.recruitment-stage-flow .is-done{color:#28774f}.recruitment-stage-flow .is-done>span{border-color:#56a77b;background:#e8f6ee}.recruitment-stage-flow .is-current{color:#164e68;font-weight:700}.recruitment-stage-flow .is-current>span{border-color:#1688a5;background:#dff3f8}
+.recruitment-stage-advance{display:flex;justify-content:flex-end}
+@media(max-width:900px){.recruitment-stage-flow{grid-template-columns:1fr}.recruitment-stage-flow li{font-size:.72rem}}
 .candidate-save-status{min-width:11rem;color:#28774f;font-size:.68rem;text-align:right}
 .candidate-inline-card.is-dirty .candidate-save-status{color:#8a6410}
 .candidate-inline-card.is-save-error .candidate-save-status{color:#a23f3f}

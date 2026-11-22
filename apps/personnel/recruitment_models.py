@@ -6,6 +6,7 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.files.storage import FileSystemStorage
 from django.db import models
+from django.utils import timezone
 from django.utils.functional import cached_property
 from .models import PersonnelModel
 
@@ -14,9 +15,10 @@ RECRUITMENT_STAGES = [
     ('NEW','Новый'),
     ('SCREENING','На рассмотрении'),
     ('HR_INTERVIEW','Собеседование HR'),
-    ('MANAGER_APPROVAL','Согласование руководителя'),
-    ('SECURITY_CHECK','Проверка СБ'),
-    ('MEDICAL_DOCUMENTS','Медосмотр и документы'),
+    ('MANAGER_APPROVAL','Направлен на согласование Заказчику'),
+    ('SECURITY_CHECK','Направлен на согласование в СЭБ'),
+    ('MEDICAL_DOCUMENTS','Направлен на медкомиссию'),
+    ('PASS_PROCESSING','Направлен на пропуск'),
     ('SELECTED','Отобран'),
     ('READY','Готов к заезду'),
     ('TRANSFERRED','Поставлен на заезд'),
@@ -32,6 +34,7 @@ RECRUITMENT_STAGES = [
 RECRUITMENT_TERMINAL_STAGES={'REJECTED','WITHDRAWN','NOT_REQUIRED','NO_SHOW'}
 RECRUITMENT_SYSTEM_STAGES={'TRANSFERRED','ARRIVAL_APPROVED','ARRIVED','EMPLOYED'}
 POOL_UNAVAILABLE_STAGES=RECRUITMENT_TERMINAL_STAGES|RECRUITMENT_SYSTEM_STAGES
+RECRUITMENT_APPROVAL_FLOW=('MANAGER_APPROVAL','SECURITY_CHECK','MEDICAL_DOCUMENTS','PASS_PROCESSING','READY')
 
 INVALID_RECRUITMENT_SPECIALIST_NAMES={'нет','не назначен','ответственный hr','фио','nan','none','null'}
 INVALID_RECRUITMENT_SPECIALIST_FRAGMENTS=(
@@ -113,6 +116,7 @@ class TalentPoolCandidate(PersonnelModel):
         related_name='talent_pool_sources',verbose_name='Сотрудник ЗУП')
     employed_at=models.DateTimeField('Подтверждено трудоустройство',null=True,blank=True)
     stage=models.CharField('Этап воронки',max_length=24,choices=RECRUITMENT_STAGES,default='NEW')
+    stage_started_at=models.DateTimeField('Начало текущего этапа',default=timezone.now,db_index=True)
     is_active=models.BooleanField('Доступен для вакансий',default=True)
     archived_at=models.DateTimeField('Перенесён в архив',null=True,blank=True)
     archived_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.SET_NULL,null=True,blank=True,
@@ -122,6 +126,22 @@ class TalentPoolCandidate(PersonnelModel):
         ordering=['full_name','pk']
         constraints=[models.UniqueConstraint(fields=['company','employed_employee'],condition=models.Q(employed_employee__isnull=False),name='talent_pool_one_zup_employee')]
     def __str__(self):return self.full_name
+    @classmethod
+    def from_db(cls,db,field_names,values):
+        instance=super().from_db(db,field_names,values)
+        instance._loaded_stage=instance.stage
+        return instance
+    def save(self,*args,**kwargs):
+        loaded_stage=getattr(self,'_loaded_stage',None)
+        if self._state.adding:
+            if not self.stage_started_at:self.stage_started_at=timezone.now()
+        elif loaded_stage is not None and loaded_stage!=self.stage:
+            self.stage_started_at=timezone.now()
+            if kwargs.get('update_fields') is not None:
+                kwargs['update_fields']=set(kwargs['update_fields'])|{'stage_started_at'}
+        result=super().save(*args,**kwargs)
+        self._loaded_stage=self.stage
+        return result
     def clean(self):
         super().clean()
         for field in ('responsible_hr','position','construction_object','camp','base_city','employed_employee'):
