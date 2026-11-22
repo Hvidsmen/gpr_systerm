@@ -194,6 +194,35 @@ class CampObjectLink(PersonnelModel):
             raise ValidationError('Связь местонахождения и объекта другой компании.')
 
 
+class MovementExcelSiteMapping(PersonnelModel):
+    source_site=models.CharField('Участок из Excel',max_length=250)
+    source_site_normalized=models.CharField(max_length=250,editable=False)
+    construction_object=models.ForeignKey('projects.ConstructionObject',on_delete=models.PROTECT,
+        related_name='movement_excel_site_mappings',verbose_name='Строительный объект')
+    camp=models.ForeignKey(Camp,on_delete=models.PROTECT,related_name='movement_excel_site_mappings',verbose_name='Местонахождение')
+    class Meta:
+        ordering=['source_site','pk']
+        constraints=[models.UniqueConstraint(fields=['company','source_site_normalized'],name='movement_excel_site_unique')]
+    @staticmethod
+    def normalize(value):return ' '.join(str(value or '').replace('ё','е').replace('Ё','Е').split()).casefold()
+    def clean(self):
+        super().clean();self.source_site=' '.join(self.source_site.split());self.source_site_normalized=self.normalize(self.source_site)
+        if not self.source_site:raise ValidationError({'source_site':'Укажите название участка из Excel.'})
+        for field in ('construction_object','camp'):
+            value=getattr(self,field,None)
+            if value and value.company_id!=self.company_id:raise ValidationError({field:'Выберите значение своей компании.'})
+        if self.construction_object_id and self.camp_id:
+            object_ids={self.construction_object_id};front=set(object_ids)
+            pairs=list(self.construction_object.__class__.objects.filter(company_id=self.company_id,
+                project_id=self.construction_object.project_id).values_list('pk','parent_id'))
+            while front:
+                children={pk for pk,parent_id in pairs if parent_id in front};object_ids|=children;front=children
+            if not CampObjectLink.objects.filter(company_id=self.company_id,camp_id=self.camp_id,
+                    construction_object_id__in=object_ids).exists():
+                raise ValidationError({'camp':'Местонахождение должно быть связано с выбранным строительным объектом.'})
+    def __str__(self):return f'{self.source_site} → {self.construction_object} → {self.camp}'
+
+
 class CampStay(ActualHistoryMixin, PersonnelModel):
     person = models.ForeignKey(Person,on_delete=models.PROTECT,related_name='stays')
     camp = models.ForeignKey(Camp,on_delete=models.PROTECT,related_name='stays')

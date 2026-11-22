@@ -2,7 +2,7 @@ from datetime import timedelta
 from django import forms
 from django.db.models import Q
 from apps.resources.models import Position
-from .models import BaseCity, Board, MovementReviewRequest, Person, StaffingGroup, StaffingSlot, ZupWorkSchedule
+from .models import BaseCity, Board, MovementExcelSiteMapping, MovementReviewRequest, Person, StaffingGroup, StaffingSlot, ZupWorkSchedule
 from .employee_widgets import RemoteEmployeeSelect, RemoteEmployeeSelectMultiple
 
 
@@ -320,6 +320,33 @@ class MovementReviewForm(StyledModelForm):
             if not camp.object_links.filter(company=self.instance.company,construction_object_id__in=ids).exists():self.add_error('camp','Выберите местонахождение выбранного проекта.')
         data['new_base_city']=new
         return data
+
+
+class MovementExcelSiteMappingForm(StyledModelForm):
+    class Meta:
+        model=MovementExcelSiteMapping
+        fields=['source_site','construction_object','camp']
+    def __init__(self,*args,company,**kwargs):
+        super().__init__(*args,**kwargs);self.instance.company=company;self.company=company
+        from apps.projects.models import ConstructionObject
+        from .models import Camp
+        object_rows=ConstructionObject.objects.filter(company=company).select_related('project','parent').order_by('project__name','name','pk')
+        objects=list(object_rows);self.fields['construction_object'].queryset=object_rows
+        by_id={row.pk:row for row in objects}
+        def object_label(row):
+            names=[row.name];parent_id=row.parent_id;seen={row.pk}
+            while parent_id and parent_id not in seen and parent_id in by_id:
+                seen.add(parent_id);parent=by_id[parent_id];names.append(parent.name);parent_id=parent.parent_id
+            return f'{row.project.name} → {" → ".join(reversed(names))}'
+        self.fields['construction_object'].label_from_instance=object_label
+        current=self.instance.camp_id if self.instance.pk else None
+        self.fields['camp'].queryset=Camp.objects.filter(company=company).filter(Q(is_active=True)|Q(pk=current)).order_by('name','pk')
+        self.fields['source_site'].help_text='Введите название точно так, как оно указано в колонке «Участок» файла перевахты.'
+    def clean_source_site(self):
+        value=' '.join(self.cleaned_data['source_site'].split());normalized=MovementExcelSiteMapping.normalize(value)
+        duplicate=MovementExcelSiteMapping.objects.filter(company=self.company,source_site_normalized=normalized).exclude(pk=self.instance.pk)
+        if duplicate.exists():raise forms.ValidationError('Для этого участка соответствие уже настроено.')
+        return value
 
 
 class PersonScheduleForm(forms.Form):

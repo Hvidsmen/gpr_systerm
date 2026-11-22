@@ -13,7 +13,7 @@ from apps.accounts.models import Company, Role, User
 from apps.projects.models import ConstructionObject, Project
 from apps.resources.models import Employee, Position
 from . import housing
-from .models import BaseCity, Board, Camp, CampObjectLink, MovementReviewRequest, Person, StaffingGroup, StaffingSlot
+from .models import BaseCity, Board, Camp, CampObjectLink, MovementExcelSiteMapping, MovementReviewRequest, Person, StaffingGroup, StaffingSlot
 
 
 class MovementReviewRequestTests(TestCase):
@@ -668,3 +668,36 @@ class MovementReviewRequestTests(TestCase):
         self.assertIn(archived,response.context['excel_history_requests']);self.assertNotIn(archived,response.context['excel_review_requests'])
         response=self.client.post(reverse('personnel:movement_reviews'),{'review_action':'import_excel','movement_excel':upload()})
         self.assertEqual(MovementReviewRequest.objects.count(),2);self.assertContains(response,'повторов 2')
+
+    def test_excel_site_mapping_updates_pending_rows_and_drives_future_imports(self):
+        raw_site='Талнах  Строительный участок №3'
+        pending=MovementReviewRequest.objects.create(company=self.company,person=self.person,kind='ARRIVAL',
+            movement_date=timezone.localdate(),requested_by=self.reviewer,source='EXCEL',site=raw_site,request_number='901')
+        self.client.force_login(self.reviewer);url=reverse('personnel:movement_excel_sites')
+        page=self.client.get(url);self.assertEqual(page.status_code,200);self.assertContains(page,raw_site)
+        response=self.client.post(url,{'source_site':'Талнах Строительный участок №3',
+            'construction_object':self.site.pk,'camp':self.camp.pk},follow=True)
+        self.assertContains(response,'Обновлено необработанных Excel-заявок: 1')
+        mapping=MovementExcelSiteMapping.objects.get();self.assertEqual(mapping.source_site_normalized,'талнах строительный участок №3')
+        pending.refresh_from_db();self.assertEqual(pending.site_object,self.site);self.assertEqual(pending.construction_object,self.obj)
+        self.assertEqual(pending.to_camp,self.camp)
+        from openpyxl import Workbook
+        book=Workbook();sheet=book.active;sheet.title='Заезд Ноябрь 26'
+        sheet.append(['Фамилия Имя Отчество','Должность','Участок','Базовый город','№ заявки','Дата заезда','Статус'])
+        sheet.append([self.employee.display_name,'Электромонтёр СМГ','ТАЛНАХ строительный участок №3','Уфа',902,
+            timezone.localdate()+timedelta(days=1),'Ожидается'])
+        stream=BytesIO();book.save(stream)
+        from .movement_excel_import import apply
+        result=apply(self.reviewer,stream.getvalue());self.assertEqual(result['site_mapped'],1)
+        imported=MovementReviewRequest.objects.get(request_number='902')
+        self.assertEqual(imported.site_object,self.site);self.assertEqual(imported.construction_object,self.obj)
+        self.assertEqual(imported.to_camp,self.camp)
+
+    def test_excel_site_mapping_rejects_unrelated_camp_and_duplicate_normalized_name(self):
+        other=Camp.objects.create(company=self.company,name='Другое местонахождение')
+        self.client.force_login(self.reviewer);url=reverse('personnel:movement_excel_sites')
+        response=self.client.post(url,{'source_site':'Участок №1','construction_object':self.site.pk,'camp':other.pk})
+        self.assertEqual(response.status_code,200);self.assertContains(response,'Местонахождение должно быть связано')
+        MovementExcelSiteMapping.objects.create(company=self.company,source_site='Участок №1',construction_object=self.site,camp=self.camp)
+        response=self.client.post(url,{'source_site':'  УЧАСТОК   №1 ','construction_object':self.site.pk,'camp':self.camp.pk})
+        self.assertContains(response,'Для этого участка соответствие уже настроено')

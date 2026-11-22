@@ -18,8 +18,8 @@ from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 from core.permissions import role_code
 from .views import access,scoped
-from .models import Camp,CampObjectLink,CampStay,HousingEvent,MovementReviewRequest,Person,Board,StaffingGroup,StaffingSlot
-from .forms import CampForm,MovementForm,MovementRecommendationForm,MovementReviewForm,NewEmployeeRegistrationForm,PersonScheduleForm,ZupScheduleChangeForm
+from .models import Camp,CampObjectLink,CampStay,HousingEvent,MovementExcelSiteMapping,MovementReviewRequest,Person,Board,StaffingGroup,StaffingSlot
+from .forms import CampForm,MovementForm,MovementExcelSiteMappingForm,MovementRecommendationForm,MovementReviewForm,NewEmployeeRegistrationForm,PersonScheduleForm,ZupScheduleChangeForm
 from . import housing
 from .services import calendar_for,departure_days
 
@@ -522,9 +522,69 @@ def movement_reviews(request):
             try:
                 from .movement_excel_import import apply
                 result=apply(request.user,uploaded.read())
-                messages.success(request,f"Импорт завершён. Создано заявок: {result['created']}; сразу в историю: {result['archived']}; повторов пропущено: {result['duplicates']}; не сопоставлено: {len(result['unmatched'])}.")
+                messages.success(request,f"Импорт завершён. Создано заявок: {result['created']}; по таблице участков заполнено: {result['site_mapped']}; сразу в историю: {result['archived']}; повторов пропущено: {result['duplicates']}; не сопоставлено сотрудников: {len(result['unmatched'])}.")
             except ValidationError as exc:messages.error(request,'; '.join(exc.messages))
     return render(request,'personnel/movement_reviews.html',{**review_request_context(request),'movement_import_result':result})
+
+
+@login_required
+@require_http_methods(['GET','POST'])
+def movement_excel_sites(request):
+    from core.permissions import require_roles
+    require_roles(request.user,{'ADMIN','HR_HEAD'})
+    mapping_id=((request.POST.get('mapping_id') if request.method=='POST' else request.GET.get('edit','')) or '').strip()
+    instance=get_object_or_404(MovementExcelSiteMapping,company=request.user.company,pk=mapping_id) if mapping_id.isdigit() else None
+    initial={'source_site':' '.join(request.GET.get('site','').split())} if not instance else None
+    form=MovementExcelSiteMappingForm(request.POST if request.method=='POST' else None,company=request.user.company,
+        instance=instance or MovementExcelSiteMapping(company=request.user.company),initial=initial)
+    if request.method=='POST' and form.is_valid():
+        with transaction.atomic():
+            saved=form.save()
+            from .movement_excel_sites import apply_to_pending
+            changed=apply_to_pending(saved)
+            from apps.audit.models import AuditLog
+            AuditLog.objects.create(user=request.user,action='UPDATE' if instance else 'CREATE',
+                entity_type='personnel.MovementExcelSiteMapping',entity_id=str(saved.pk),
+                new_value={'source_site':saved.source_site,'construction_object_id':saved.construction_object_id,
+                    'camp_id':saved.camp_id,'pending_requests_updated':changed},
+                comment='Настроено соответствие участка Excel')
+        messages.success(request,f'Соответствие сохранено. Обновлено необработанных Excel-заявок: {changed}.')
+        return redirect('personnel:movement_excel_sites')
+    mappings=list(MovementExcelSiteMapping.objects.filter(company=request.user.company).select_related(
+        'construction_object__project','construction_object__parent','camp'))
+    by_source={row.source_site_normalized:row for row in mappings}
+    source_rows=MovementReviewRequest.objects.filter(company=request.user.company,source='EXCEL').exclude(site='').values('site').annotate(total=Count('pk'))
+    combined={}
+    for row in source_rows:
+        key=MovementExcelSiteMapping.normalize(row['site']);item=combined.setdefault(key,{'source_site':row['site'],'request_count':0})
+        item['request_count']+=row['total']
+    for mapping in mappings:combined.setdefault(mapping.source_site_normalized,{'source_site':mapping.source_site,'request_count':0})
+    rows=[]
+    for key,item in combined.items():rows.append({**item,'mapping':by_source.get(key)})
+    query=' '.join(request.GET.get('q','').split())
+    if query:
+        needle=MovementExcelSiteMapping.normalize(query)
+        rows=[row for row in rows if needle in MovementExcelSiteMapping.normalize(row['source_site']) or row['mapping'] and
+            (needle in MovementExcelSiteMapping.normalize(row['mapping'].construction_object.name) or
+             needle in MovementExcelSiteMapping.normalize(row['mapping'].camp.name))]
+    rows.sort(key=lambda row:MovementExcelSiteMapping.normalize(row['source_site']))
+    return render(request,'personnel/movement_excel_sites.html',{'personnel_section':'reviews','rows':rows,'form':form,
+        'editing_mapping':instance,'query':query,'unmapped_count':sum(row['mapping'] is None for row in rows)})
+
+
+@login_required
+@require_http_methods(['POST'])
+def movement_excel_site_delete(request,pk):
+    from core.permissions import require_roles
+    require_roles(request.user,{'ADMIN','HR_HEAD'})
+    mapping=get_object_or_404(MovementExcelSiteMapping,company=request.user.company,pk=pk)
+    label=mapping.source_site
+    from apps.audit.models import AuditLog
+    AuditLog.objects.create(user=request.user,action='DELETE',entity_type='personnel.MovementExcelSiteMapping',entity_id=str(mapping.pk),
+        old_value={'source_site':mapping.source_site,'construction_object_id':mapping.construction_object_id,'camp_id':mapping.camp_id},
+        comment='Удалено соответствие участка Excel')
+    mapping.delete();messages.success(request,f'Соответствие для «{label}» удалено. Уже заполненные заявки не изменены.')
+    return redirect('personnel:movement_excel_sites')
 
 
 @login_required

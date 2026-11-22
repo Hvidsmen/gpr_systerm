@@ -5,7 +5,7 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from apps.projects.models import ConstructionObject
 from apps.resources.models import Employee
-from .models import MovementReviewRequest,Person
+from .models import MovementExcelSiteMapping,MovementReviewRequest,Person
 from . import housing
 
 
@@ -123,7 +123,9 @@ def apply(user,raw):
     objects={}
     for obj in ConstructionObject.objects.filter(company=company).select_related('parent'):
         objects.setdefault(normalized(obj.name),[]).append(obj)
-    result={'created':0,'archived':0,'duplicates':0,'unmatched':[],'invalid':[],'ignored_sheets':ignored,'total':len(parsed)}
+    mappings={row.source_site_normalized:row for row in MovementExcelSiteMapping.objects.filter(company=company).select_related(
+        'construction_object__parent','camp')}
+    result={'created':0,'archived':0,'duplicates':0,'site_mapped':0,'unmatched':[],'invalid':[],'ignored_sheets':ignored,'total':len(parsed)}
     for data in parsed:
         if data.get('error'):
             result['invalid'].append(f"{data['sheet']}, строка {data['row']}: {data['error']}");continue
@@ -140,11 +142,13 @@ def apply(user,raw):
             result['unmatched'].append(f"{data['sheet']}, строка {data['row']}: {data['name']} — {cause}");continue
         lookup={'company':company,'person':person,'kind':data['kind'],'movement_date':data['movement_date'],'request_number':data['request_number']}
         if MovementReviewRequest.objects.filter(**lookup).exists():result['duplicates']+=1;continue
-        object_matches=objects.get(normalized(data['site']),[]);site_object=object_matches[0] if len(object_matches)==1 else None
+        mapping=mappings.get(normalized(data['site']))
+        object_matches=objects.get(normalized(data['site']),[]);site_object=mapping.construction_object if mapping else object_matches[0] if len(object_matches)==1 else None
         employee=person.employee
         from .models import CampObjectLink
-        camp_ids=list(CampObjectLink.objects.filter(company=company,construction_object=site_object,camp__is_active=True).values_list('camp_id',flat=True).distinct()) if site_object else []
-        camp_id=camp_ids[0] if len(camp_ids)==1 else None
+        camp_ids=list(CampObjectLink.objects.filter(company=company,construction_object=site_object,camp__is_active=True).values_list('camp_id',flat=True).distinct()) if site_object and not mapping else []
+        camp_id=mapping.camp_id if mapping else camp_ids[0] if len(camp_ids)==1 else None
+        if mapping:result['site_mapped']+=1
         archived=completed_status(data['travel_status'])
         row=MovementReviewRequest(**lookup,requested_by=user,source='EXCEL',status='COMPLETED' if archived else 'OPEN',employment_kind=data['employment_kind'],
             planning_position_name=data['planning_position_name'],position_name=employee.display_position if employee else '',

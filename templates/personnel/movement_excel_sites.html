@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+{% block title %}Соответствия участков Excel · перевахта{% endblock %}
+{% block content %}
+<h1>Персонал</h1>{% include 'personnel/_personnel_sections.html' %}
+<div class="d-flex justify-content-between align-items-start flex-wrap gap-2 mb-3">
+  <div><h2 class="h4 mb-1">Соответствия участков Excel</h2><p class="text-muted mb-0">Определите, какие строительный объект и местонахождение подставлять для каждого названия участка из файла перевахты.</p></div>
+  <a class="btn btn-outline-primary" href="{% url 'personnel:movement_reviews' %}#movement-requests">К заявкам перевахты</a>
+</div>
+<section class="card card-body mb-3">
+  <h3 class="h5">{% if editing_mapping %}Изменить соответствие{% else %}Добавить соответствие{% endif %}</h3>
+  <p class="small text-muted">После сохранения правило применяется к новым импортам и ко всем уже загруженным необработанным Excel-заявкам с таким участком.</p>
+  <form method="post">{% csrf_token %}<input type="hidden" name="mapping_id" value="{{ editing_mapping.pk|default:'' }}">
+    {% include 'forms/fields.html' with form=form %}
+    <div class="d-flex gap-2 mt-3"><button class="btn btn-primary">Сохранить соответствие</button>{% if editing_mapping %}<a class="btn btn-outline-secondary" href="{% url 'personnel:movement_excel_sites' %}">Отмена</a>{% endif %}</div>
+  </form>
+</section>
+<form method="get" class="card card-body mb-3"><div class="row g-2 align-items-end"><div class="col-md-8"><label class="form-label" for="excel-site-search">Поиск по участку, объекту или местонахождению</label><input class="form-control" id="excel-site-search" name="q" value="{{ query }}"></div><div class="col-auto"><button class="btn btn-primary">Найти</button></div><div class="col-auto"><a class="btn btn-outline-secondary" href="{% url 'personnel:movement_excel_sites' %}">Сбросить</a></div></div></form>
+<section class="card card-body">
+  <div class="d-flex justify-content-between align-items-center gap-2 mb-2"><h3 class="h5 mb-0">Таблица соответствий</h3>{% if unmapped_count %}<span class="badge bg-warning text-dark">Не настроено: {{ unmapped_count }}</span>{% else %}<span class="badge bg-success">Все найденные участки настроены</span>{% endif %}</div>
+  <div class="table-responsive"><table class="table table-sm align-middle mb-0"><thead><tr><th>Участок из Excel</th><th>Строительный объект</th><th>Местонахождение</th><th>Строк Excel</th><th>Состояние</th><th></th></tr></thead><tbody>
+  {% for row in rows %}<tr{% if not row.mapping %} class="table-warning"{% endif %}><td><strong>{{ row.source_site }}</strong></td><td>{% if row.mapping %}{{ row.mapping.construction_object.project }} → {% if row.mapping.construction_object.parent %}{{ row.mapping.construction_object.parent }} → {% endif %}{{ row.mapping.construction_object }}{% else %}—{% endif %}</td><td>{{ row.mapping.camp|default:'—' }}</td><td>{{ row.request_count }}</td><td>{% if row.mapping %}<span class="badge bg-success">Настроено</span>{% else %}<span class="badge bg-warning text-dark">Не настроено</span>{% endif %}</td><td><div class="d-flex gap-1">{% if row.mapping %}<a class="btn btn-sm btn-outline-primary" href="?edit={{ row.mapping.pk }}">Изменить</a><form method="post" action="{% url 'personnel:movement_excel_site_delete' row.mapping.pk %}" onsubmit="return confirm('Удалить это соответствие? Уже заполненные заявки останутся без изменений.')">{% csrf_token %}<button class="btn btn-sm btn-outline-danger">Удалить</button></form>{% else %}<a class="btn btn-sm btn-primary" href="?site={{ row.source_site|urlencode }}">Настроить</a>{% endif %}</div></td></tr>{% empty %}<tr><td colspan="6">Участки из Excel ещё не найдены. Можно добавить соответствие вручную перед первой загрузкой.</td></tr>{% endfor %}
+  </tbody></table></div>
+</section>
+{% endblock %}
