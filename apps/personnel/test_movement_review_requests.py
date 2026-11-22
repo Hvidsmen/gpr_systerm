@@ -641,7 +641,7 @@ class MovementReviewRequestTests(TestCase):
         day=timezone.localdate();position=self.employee.display_position
         self.slot.status='МО';self.slot.housing_camp=self.camp
         self.slot.save(update_fields=['status','housing_camp','updated_at'])
-        for employment_kind in ('NEW','STAFF','TRANSFER'):
+        for employment_kind in ('NEW','STAFF','REHIRE','TRANSFER'):
             MovementReviewRequest.objects.create(company=self.company,person=self.person,kind='ARRIVAL',movement_date=day,
                 to_camp=self.camp,construction_object=self.obj,requested_by=self.personnel,
                 planning_position_name=position,employment_kind=employment_kind)
@@ -652,13 +652,24 @@ class MovementReviewRequestTests(TestCase):
         MovementReviewRequest.objects.create(company=self.company,person=self.person,kind='ARRIVAL',movement_date=day,
             to_camp=self.camp,construction_object=self.obj,requested_by=self.personnel,planning_position_name=position,
             employment_kind='NEW',status='CANCELLED')
+        MovementReviewRequest.objects.create(company=self.company,person=self.person,kind='ARRIVAL',
+            movement_date=day+timedelta(days=1),to_camp=self.camp,construction_object=self.obj,
+            requested_by=self.personnel,planning_position_name=position,employment_kind='BUSINESS_TRIP')
+        MovementReviewRequest.objects.create(company=self.company,person=self.person,kind='DEPARTURE',
+            movement_date=day+timedelta(days=1),from_camp=self.camp,construction_object=self.obj,
+            requested_by=self.personnel,planning_position_name=position)
         self.client.force_login(self.reviewer);url=reverse('personnel:movement_position_summary')
         params={'date':day.isoformat(),'camp':self.camp.pk}
         response=self.client.get(url,params)
         row=next(item for item in response.context['rows'] if item['position']==position)
         self.assertEqual((row['on_rest'],row['arrival_new'],row['arrival_staff'],row['arrival_other'],row['departure']),
-            (1,1,1,1,1))
-        self.assertContains(response,'Сводный отчёт по должностям');self.assertContains(response,'Планируются к выезду')
+            (1,1,1,2,1))
+        self.assertContains(response,'Сводные отчёты перевахты');self.assertContains(response,'Планируются к выезду')
+        statuses={row['code']:row for row in response.context['status_rows']}
+        self.assertEqual(statuses['REHIRE']['arrival_today'],1)
+        self.assertEqual(statuses['BUSINESS_TRIP']['arrival_tomorrow'],1)
+        self.assertEqual(statuses['STAFF']['departure_today'],1)
+        self.assertEqual(statuses['STAFF']['departure_tomorrow'],1)
         export=self.client.get(url,{**params,'export':'xlsx'})
         self.assertEqual(export['Content-Type'],'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
         from openpyxl import load_workbook
@@ -667,6 +678,14 @@ class MovementReviewRequestTests(TestCase):
             'Поставлены на заезд (новые)','Поставлены на заезд (штат)',
             'Поставлены на заезд (перевод / командировка)','Планируются к выезду'])
         book.close()
+        status_export=self.client.get(url,{**params,'export':'status'})
+        status_book=load_workbook(BytesIO(status_export.content),read_only=True);status_sheet=status_book.active
+        self.assertEqual([cell.value for cell in status_sheet[1]],['Статус',f'Заявлено на заезд {day:%d.%m.%Y}',
+            f'Заявлено на заезд {day+timedelta(days=1):%d.%m.%Y}',f'Заявлено на выезд {day:%d.%m.%Y}',
+            f'Заявлено на выезд {day+timedelta(days=1):%d.%m.%Y}'])
+        status_book.close()
+        from .movement_excel_import import employment
+        self.assertEqual(employment('Повторный прием'),'REHIRE')
 
     def test_dispatcher_and_excel_requests_are_separate_and_newest_first(self):
         day=timezone.localdate()

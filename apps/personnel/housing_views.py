@@ -511,6 +511,18 @@ def review_request_context(request):
         'movement_review_open_count':counts['opened']}
 
 
+def movement_summary_requests(company,days,project_id=None,camp_id=None,source=''):
+    days=list(days)
+    requests=MovementReviewRequest.objects.filter(company=company).exclude(
+        status__in=['COMPLETED','ACCEPTED','CANCELLED']).filter(
+        Q(requested_movement_date__in=days)|Q(requested_movement_date__isnull=True,movement_date__in=days))
+    if project_id:requests=requests.filter(Q(construction_object__project_id=project_id)|Q(site_object__project_id=project_id))
+    if camp_id:requests=requests.filter(Q(kind='ARRIVAL',to_camp_id=camp_id)|(
+        ~Q(kind='ARRIVAL')&Q(from_camp_id=camp_id)))
+    if source in dict(MovementReviewRequest.SOURCES):requests=requests.filter(source=source)
+    return requests
+
+
 def movement_position_summary_data(company,day,project_id=None,camp_id=None,source=''):
     from .rotation import rotation_rows
     camps=Camp.objects.filter(company=company)
@@ -528,12 +540,7 @@ def movement_position_summary_data(company,day,project_id=None,camp_id=None,sour
         assigned=row.get('assignment_object')
         if project_id and (not assigned or assigned.project_id!=project_id):continue
         item(row.get('position_label'))['on_rest']+=1
-    requests=MovementReviewRequest.objects.filter(company=company).exclude(status__in=['COMPLETED','ACCEPTED','CANCELLED']).filter(
-        Q(requested_movement_date=day)|Q(requested_movement_date__isnull=True,movement_date=day))
-    if project_id:requests=requests.filter(Q(construction_object__project_id=project_id)|Q(site_object__project_id=project_id))
-    if camp_id:requests=requests.filter(Q(kind='ARRIVAL',to_camp_id=camp_id)|(
-        ~Q(kind='ARRIVAL')&Q(from_camp_id=camp_id)))
-    if source in dict(MovementReviewRequest.SOURCES):requests=requests.filter(source=source)
+    requests=movement_summary_requests(company,[day],project_id,camp_id,source)
     values=requests.values('kind','status','employment_kind','planning_position_name','position_name','person__employee__position__name')
     for request_row in values:
         row=item(request_row['planning_position_name'] or request_row['position_name'] or request_row['person__employee__position__name'])
@@ -549,6 +556,27 @@ def movement_position_summary_data(company,day,project_id=None,camp_id=None,sour
     return rows,totals,camps
 
 
+def movement_status_summary_data(company,day,project_id=None,camp_id=None,source=''):
+    tomorrow=day+timedelta(days=1)
+    definitions=[('STAFF','Штат'),('NEW','Новый'),('REHIRE','Повторный приём'),
+        ('TRANSFER','Перевод'),('BUSINESS_TRIP','Командировка')]
+    rows={code:{'code':code,'label':label,'arrival_today':0,'arrival_tomorrow':0,
+        'departure_today':0,'departure_tomorrow':0} for code,label in definitions}
+    requests=movement_summary_requests(company,[day,tomorrow],project_id,camp_id,source).values(
+        'kind','status','employment_kind','requested_movement_date','movement_date')
+    for request_row in requests:
+        code=request_row['employment_kind'] if request_row['employment_kind'] in rows else 'STAFF'
+        movement_day=request_row['requested_movement_date'] or request_row['movement_date']
+        suffix='today' if movement_day==day else 'tomorrow'
+        if request_row['kind']=='ARRIVAL':rows[code][f'arrival_{suffix}']+=1
+        elif request_row['status'] in {'OPEN','PENDING_APPROVAL','RETURNED','PEREVAKHTA'}:
+            rows[code][f'departure_{suffix}']+=1
+    result=list(rows.values())
+    totals={key:sum(row[key] for row in result) for key in (
+        'arrival_today','arrival_tomorrow','departure_today','departure_tomorrow')}
+    return result,totals,tomorrow
+
+
 @login_required
 @require_http_methods(['GET'])
 def movement_position_summary(request):
@@ -562,7 +590,9 @@ def movement_position_summary(request):
     source=request.GET.get('source','')
     if source not in dict(MovementReviewRequest.SOURCES):source=''
     rows,totals,selected_camps=movement_position_summary_data(request.user.company,day,project_id,camp_id,source)
-    if request.GET.get('export')=='xlsx':
+    status_rows,status_totals,tomorrow=movement_status_summary_data(request.user.company,day,project_id,camp_id,source)
+    export=request.GET.get('export')
+    if export=='xlsx':
         values=[['№ п.п.','Должность','Кол-во сотрудников на МО','Поставлены на заезд (новые)',
             'Поставлены на заезд (штат)','Поставлены на заезд (перевод / командировка)','Планируются к выезду']]
         values.extend([[row['number'],row['position'],row['on_rest'],row['arrival_new'],row['arrival_staff'],
@@ -570,13 +600,23 @@ def movement_position_summary(request):
         values.append(['','ИТОГО',totals['on_rest'],totals['arrival_new'],totals['arrival_staff'],
             totals['arrival_other'],totals['departure']])
         return workbook_response(f'movement-position-summary-{day}.xlsx','Сводка по должностям',values)
+    if export=='status':
+        values=[['Статус',f'Заявлено на заезд {day:%d.%m.%Y}',f'Заявлено на заезд {tomorrow:%d.%m.%Y}',
+            f'Заявлено на выезд {day:%d.%m.%Y}',f'Заявлено на выезд {tomorrow:%d.%m.%Y}']]
+        values.extend([[row['label'],row['arrival_today'],row['arrival_tomorrow'],row['departure_today'],
+            row['departure_tomorrow']] for row in status_rows])
+        values.append(['ИТОГО',status_totals['arrival_today'],status_totals['arrival_tomorrow'],
+            status_totals['departure_today'],status_totals['departure_tomorrow']])
+        return workbook_response(f'movement-status-summary-{day}.xlsx','Сводка по статусам',values)
     params={'date':day.isoformat(),'project':project_id or '','camp':camp_id or '','source':source}
     export_query=urlencode({**params,'export':'xlsx'})
+    status_export_query=urlencode({**params,'export':'status'})
     return render(request,'personnel/movement_position_summary.html',{'personnel_section':'reviews','day':day,'rows':rows,
-        'totals':totals,'projects':Project.objects.filter(company=request.user.company).order_by('name','pk'),
+        'totals':totals,'tomorrow':tomorrow,'status_rows':status_rows,'status_totals':status_totals,
+        'projects':Project.objects.filter(company=request.user.company).order_by('name','pk'),
         'camps':Camp.objects.filter(company=request.user.company).order_by('name','pk'),'selected_project':project_id,
         'selected_camp':camp_id,'selected_source':source,'sources':MovementReviewRequest.SOURCES,
-        'selected_camps':selected_camps,'export_query':export_query})
+        'selected_camps':selected_camps,'export_query':export_query,'status_export_query':status_export_query})
 
 
 @login_required

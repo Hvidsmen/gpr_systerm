@@ -292,7 +292,8 @@ class MovementReviewRequest(PersonnelModel):
         ('CANCELLED','Отменено'),
     ]
     SOURCES=[('DISPATCHER','Портал'),('EXCEL','Excel')]
-    EMPLOYMENT_KINDS=[('STAFF','Штат'),('NEW','Новый'),('TRANSFER','Перевод'),('BUSINESS_TRIP','Командировка')]
+    EMPLOYMENT_KINDS=[('STAFF','Штат'),('NEW','Новый'),('REHIRE','Повторный приём'),
+        ('TRANSFER','Перевод'),('BUSINESS_TRIP','Командировка')]
     event=models.OneToOneField(HousingEvent,on_delete=models.PROTECT,related_name='review_request',null=True,blank=True)
     person=models.ForeignKey(Person,on_delete=models.PROTECT,related_name='movement_review_requests')
     pool_candidate=models.ForeignKey('personnel.TalentPoolCandidate',on_delete=models.PROTECT,null=True,blank=True,
@@ -307,7 +308,7 @@ class MovementReviewRequest(PersonnelModel):
     approval_batch=models.UUIDField(null=True,blank=True,db_index=True)
     source=models.CharField('Источник заявки',max_length=12,choices=SOURCES,default='DISPATCHER')
     status=models.CharField('Статус',max_length=20,choices=STATUSES,default='OPEN')
-    employment_kind=models.CharField('Штат / новый / перевод',max_length=16,choices=EMPLOYMENT_KINDS,blank=True)
+    employment_kind=models.CharField('Статус сотрудника',max_length=16,choices=EMPLOYMENT_KINDS,blank=True)
     planning_position_name=models.CharField('Должность по ГПР / СМГ',max_length=250,blank=True)
     position_name=models.CharField('Должность по справочнику сотрудников',max_length=250,blank=True)
     construction_object=models.ForeignKey('projects.ConstructionObject',on_delete=models.PROTECT,null=True,blank=True,related_name='movement_review_object_requests',verbose_name='Объект')

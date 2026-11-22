@@ -49,6 +49,7 @@ def as_time(raw):
 
 def employment(raw):
     text=normalized(raw)
+    if 'повтор' in text:return 'REHIRE'
     if 'нов' in text:return 'NEW'
     if 'перев' in text:return 'TRANSFER'
     if 'команд' in text:return 'BUSINESS_TRIP'
