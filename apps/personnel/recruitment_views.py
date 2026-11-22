@@ -41,7 +41,11 @@ def _needs_employment_review(row):
 
 
 def _in_funnel_group(row,value,stages):
-    return row['stage'] in stages or (value=='employed' and _needs_employment_review(row))
+    stage=row['stage'];security_approved=bool(row.get('security_approved'))
+    approval_work_stages=FUNNEL_GROUPS[0][2]
+    if value=='work':return stage in stages and not security_approved
+    if value=='selected':return stage in stages or security_approved and stage in approval_work_stages
+    return stage in stages or (value=='employed' and _needs_employment_review(row))
 
 
 def _position_name(value):return ' '.join((value or '').split())
@@ -71,7 +75,7 @@ def _position_funnel_summary(candidate_rows,request_rows,application_rows):
         key=('position',position_id) if position_id else canonical_by_name.get(label.casefold(),('name',label.casefold()))
         item=ensure(key,label);item['candidate_count']+=1
         item['people'].append({'pk':row['pk'],'full_name':row['full_name'],'stage':row['stage'],'stage_label':stage_labels[row['stage']],
-            'source_data':row['source_data'],
+            'source_data':row['source_data'],'security_approved':row['security_approved'],
             'stage_sla':row.get('stage_sla',{'managed':False}),
             'construction_object':(application['request__construction_object__name'] if application else
                 row['construction_object__name'] or (row['source_data'] or {}).get('construction_site','')),
@@ -253,7 +257,8 @@ def request_list(request,recruitment_page='bank'):
         elif pool_state!='all':candidates=candidates.filter(archived_at__isnull=True)
     else:candidates=candidates.filter(archived_at__isnull=True)
     if recruitment_page=='ready':candidates=candidates.filter(stage='TRANSFERRED')
-    candidate_rows=list(candidates.values('pk','company_id','full_name','stage','stage_started_at','position_id','position__name','construction_object__name','source_data'))
+    candidate_rows=list(candidates.values('pk','company_id','full_name','stage','stage_started_at','security_approved',
+        'position_id','position__name','construction_object__name','source_data'))
     work_calendar=WorkingDayCalendar(request.user.company_id)
     for candidate_row in candidate_rows:candidate_row['stage_sla']=stage_status(candidate_row,calendar=work_calendar)
     candidate_ids=[row['pk'] for row in candidate_rows]

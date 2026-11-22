@@ -337,6 +337,24 @@ class RecruitmentTests(TestCase):
         self.client.force_login(self.recruiter)
         page=self.client.get(reverse('personnel:recruitment_candidate_create',args=[row.pk]))
         self.assertNotContains(page,f'<option value="{pool.pk}">')
+
+    def test_security_approved_candidate_is_in_store_and_available_for_vacancy(self):
+        from .models import TalentPoolCandidate
+        from .recruitment_forms import CandidateForm
+        pool=TalentPoolCandidate.objects.create(company=self.company,full_name='Согласованный СЭБ кандидат',
+            stage='MEDICAL_DOCUMENTS',manager_approved=True,manager_approved_on=date(2026,11,20),
+            security_approved=True,security_approved_on=date(2026,11,21),position=self.position,
+            construction_object=self.obj,created_by=self.recruiter)
+        vacancy=self.row();service.assign_request(self.hr_head,vacancy.pk,self.recruiter,vacancy.revision)
+        self.assertIn(pool,CandidateForm(company=self.company,request_row=vacancy).fields['pool_candidate'].queryset)
+        self.client.force_login(self.recruiter)
+        page=self.client.get(reverse('personnel:recruitment_list'))
+        groups={row['label']:row['count'] for row in page.context['funnel_groups']}
+        self.assertEqual(groups['В работе'],0);self.assertEqual(groups['Магазин'],1)
+        store=self.client.get(reverse('personnel:recruitment_list'),{'candidate_stage':'selected'})
+        self.assertContains(store,pool.full_name)
+        work=self.client.get(reverse('personnel:recruitment_list'),{'candidate_stage':'work'})
+        self.assertNotContains(work,pool.full_name)
     def test_handoff_and_confirmation_are_idempotent(self):
         prep=self.preparation();c=prep.candidate
         self.assertEqual(service.handoff(self.recruiter,c.pk,0).pk,prep.pk)
