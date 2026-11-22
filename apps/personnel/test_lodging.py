@@ -325,6 +325,8 @@ class LodgingTests(TestCase):
         self.assertEqual(response.status_code,200)
         self.assertContains(response,'Состав проживающих');self.assertContains(response,'Сварщик');self.assertContains(response,guest.full_name)
         self.assertContains(response,'data-lodging-nav-active="composition"')
+        self.assertContains(response,'data-composition-action="expand"')
+        self.assertContains(response,'data-composition-action="collapse"')
         self.assertContains(response,'aria-current="page"',count=1)
         navigation=response.content.decode()
         self.assertLess(navigation.index('>Проживание</a>'),navigation.index('>Состояние на дату</a>'))
