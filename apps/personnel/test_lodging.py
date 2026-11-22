@@ -330,6 +330,11 @@ class LodgingTests(TestCase):
         self.assertEqual(book.sheetnames,['Сводка','Список сотрудников'])
         self.assertEqual(book['Список сотрудников'].max_row,3)
         book.close()
+        default_mode=self.client.get(reverse('personnel:lodging_composition'),{
+            'date':str(self.day),'view':'POSITION','camps':[self.a.pk]})
+        self.assertTrue(default_mode.context['form'].is_valid())
+        self.assertEqual(default_mode.context['mode'],'FACTUAL')
+        self.assertContains(default_mode,'Расчёт выполнен по указанным фактическим датам.')
 
     def test_commandant_can_load_company_employee_choices(self):
         search=reverse('personnel:employee_search')

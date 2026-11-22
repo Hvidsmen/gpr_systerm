@@ -329,9 +329,11 @@ def composition_workbook(day,view,camps,summary_rows,rows):
 def composition_report(request):
     started=perf_counter();require_roles(request.user,lodging.READERS)
     available=Camp.objects.filter(company=request.user.company)
-    initial={'date':timezone.localdate(),'mode':'PORTAL','view':'POSITION','camps':list(available[:1])}
-    form=LodgingCompositionFilter(request.GET or None,company=request.user.company,initial=initial)
-    rows=[];summary_rows=[];stats=Counter();camps=[];day=initial['date'];view='POSITION';mode='PORTAL'
+    initial={'date':timezone.localdate(),'mode':'FACTUAL','view':'POSITION','camps':list(available[:1])}
+    query=request.GET.copy()
+    if query and not query.get('mode'):query['mode']='FACTUAL'
+    form=LodgingCompositionFilter(query or None,company=request.user.company,initial=initial)
+    rows=[];summary_rows=[];stats=Counter();camps=[];day=initial['date'];view='POSITION';mode='FACTUAL'
     if form.is_valid():
         data=form.cleaned_data;camps=list(data['camps']);day=data['date'];view=data['view'];mode=data['mode']
         selected_organizations=set(data['organizations']);selected_positions=set(data['positions']);selected_buildings=set(data['buildings'].values_list('pk',flat=True));terms=data['q'].casefold().split()
