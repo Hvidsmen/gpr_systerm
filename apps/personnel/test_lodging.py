@@ -469,6 +469,7 @@ class LodgingTests(TestCase):
             grouped=self.client.get(url,{'camp':self.a.pk,'date':str(self.day),'mode':'FACTUAL','view':view})
             self.assertEqual(grouped.status_code,200);self.assertEqual(grouped.context['view'],view)
             self.assertContains(grouped,title);self.assertContains(grouped,self.second_employee.display_name)
+            self.assertContains(grouped,'data-lodging-report-expand="1"');self.assertContains(grouped,'data-lodging-report-expand="0"')
             self.assertEqual(sum(group['total'] for group in grouped.context['grouped_rows']),1)
         export=self.client.get(url,{'camp':self.a.pk,'date':str(self.day),'mode':'FACTUAL','export':'xlsx'})
         self.assertEqual(export['Content-Type'],'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')

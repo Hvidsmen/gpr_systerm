@@ -1,6 +1,6 @@
 {% extends 'base.html' %}{% load static %}
 {% block title %}Состояние проживания на дату{% endblock %}
-{% block extra_css %}<link rel="stylesheet" href="{% static 'personnel/lodging.css' %}?v=20261122-report-groups">{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'personnel/lodging.css' %}?v=20261122-report-controls">{% endblock %}
 {% block content %}
 <header class="lodging-heading"><div><h1 class="h3">Состояние проживания на дату</h1><p class="text-muted">Отчёт только для просмотра. Рабочий экран коменданта и текущие места не изменяются.</p></div>{% if camp %}<a class="btn btn-outline-primary" href="{% url 'personnel:lodging' %}?camp={{ camp.pk }}">Вернуться к проживанию</a>{% endif %}</header>
 {% include 'personnel/_lodging_nav.html' with lodging_nav_active='report' %}
@@ -15,9 +15,10 @@
 </tbody></table></div>
 {% else %}
 <section class="lodging-report-groups" aria-label="{% if view == 'ORGANIZATION' %}Проживающие по организациям{% else %}Проживающие по должностям{% endif %}">
-<h2 class="h5">{% if view == 'ORGANIZATION' %}По организациям{% else %}По должностям{% endif %}</h2>
+<div class="lodging-report-toolbar"><h2 class="h5 mb-0">{% if view == 'ORGANIZATION' %}По организациям{% else %}По должностям{% endif %}</h2><div class="d-flex flex-wrap gap-2"><button type="button" class="btn btn-sm btn-outline-primary" data-lodging-report-expand="1">Раскрыть всё</button><button type="button" class="btn btn-sm btn-outline-secondary" data-lodging-report-expand="0">Свернуть всё</button></div></div>
 {% for group in grouped_rows %}<details class="card lodging-report-group" open><summary><strong>{{ group.label }}</strong><span>Проживающих: <strong>{{ group.total }}</strong></span></summary><div class="table-responsive"><table class="table table-sm mb-0"><thead><tr><th>ФИО</th><th>{% if view == 'ORGANIZATION' %}Должность{% else %}Организация{% endif %}</th><th>Вагон / комната / место</th><th>Фактические даты</th><th>Примечание</th></tr></thead><tbody>{% for row in group.people %}<tr{% if row.overlap %} class="table-warning"{% endif %}><td><strong>{{ row.stay.resident_name }}</strong><div class="small text-muted">№ {{ row.stay.resident_number|default:'не указан' }}{% if row.stay.guest_id %} · временный{% endif %}</div></td><td>{% if view == 'ORGANIZATION' %}{{ row.position }}{% else %}{{ row.organization }}{% endif %}</td><td>{{ row.bed.building.name }} · {% if row.bed.room %}комната {{ row.bed.room }} · {% endif %}место {{ row.bed.number }}</td><td>Заселение: {{ row.stay.arrived_on|date:'d.m.Y' }}<br>Выселение: {{ row.stay.departed_on|date:'d.m.Y'|default:'—' }}</td><td>{{ row.stay.comment|default:'—' }}</td></tr>{% endfor %}</tbody></table></div></details>{% empty %}<p class="card card-body">Проживающие по выбранным условиям не найдены.</p>{% endfor %}
 </section>
 {% endif %}
 {% endif %}
 {% endblock %}
+{% block extra_js %}<script src="{% static 'personnel/lodging_report.js' %}?v=20261122-expand-all"></script>{% endblock %}
