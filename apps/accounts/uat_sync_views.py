@@ -37,9 +37,13 @@ def common(request, active):
 @login_required
 def waybills(request):
     require_roles(request.user, READERS)
-    start, end = period(request);rows = UatWaybill.objects.filter(company=request.user.company, document_date__range=(start, end)).select_related(
+    start, end = period(request);focus = request.GET.get('focus', '')
+    focused = UatWaybill.objects.filter(company=request.user.company, pk=focus).first() if focus.isdigit() else None
+    if focused:start = end = focused.document_date
+    rows = UatWaybill.objects.filter(company=request.user.company, document_date__range=(start, end)).select_related(
         'vehicle__equipment', 'department__project', 'department__construction_object', 'department__camp', 'driver_1', 'driver_2').prefetch_related(
             'tasks__department__project','tasks__department__construction_object','tasks__department__camp','tasks__allocation','tasks__fact')
+    if focused:rows=rows.filter(pk=focused.pk)
     department_choices = UatDepartment.objects.filter(company=request.user.company, is_active=True).order_by('name', 'code', 'pk')
     query = ' '.join(request.GET.get('q', '').split())[:200]
     if query:
@@ -61,7 +65,7 @@ def waybills(request):
         row_departments = [task.department for task in row.tasks.all() if task.department_id]
         if row.department_id:row_departments.append(row.department)
         row.mapping_department = next((item for item in row_departments if not item.project_id or not item.camp_id), None)
-    context = {**common(request, 'waybills'), 'page': page, 'from_day': start, 'to_day': end, 'q': query, 'department': department, 'departments': department_choices, 'posted': posted, 'status': status, 'mapping': mapping, 'fact_statuses': UatWaybill._meta.get_field('fact_status').choices}
+    context = {**common(request, 'waybills'), 'page': page, 'from_day': start, 'to_day': end, 'q': query, 'department': department, 'departments': department_choices, 'posted': posted, 'status': status, 'mapping': mapping, 'focus':focused.pk if focused else None, 'fact_statuses': UatWaybill._meta.get_field('fact_status').choices}
     return render(request, 'accounts/uat_waybills.html', context)
 
 

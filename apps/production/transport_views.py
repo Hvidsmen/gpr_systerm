@@ -6,11 +6,11 @@ from uuid import uuid4
 from django import forms
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.core.exceptions import ValidationError,PermissionDenied
+from django.core.exceptions import ObjectDoesNotExist,ValidationError,PermissionDenied
 from django.core.paginator import Paginator
 from core.fact_edit_window import can_edit_fact_day,require_fact_day,window_context
 from django.db import transaction
-from django.db.models import Q, F
+from django.db.models import Q, F, Prefetch
 from django.http import JsonResponse, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -22,7 +22,7 @@ from apps.resources.equipment_units import UnitForm
 from apps.personnel.models import Camp
 from apps.projects.models import ConstructionObject, Project
 from apps.works.models import ProjectWork, ProjectWorkItem
-from .transport_models import EquipmentCampStay, EquipmentTransportEvent, EquipmentDayRecord, EquipmentTransportControl, CONDITIONS, USES
+from .transport_models import EquipmentCampStay, EquipmentTransportEvent, EquipmentDayRecord, EquipmentDayAllocation, EquipmentTransportControl, CONDITIONS, USES
 from . import transport as service
 
 DATE_INPUT = forms.DateInput(format='%Y-%m-%d', attrs={'type': 'date'})
@@ -146,7 +146,8 @@ def equipment_choices(request):
 
 def _rows(user, camp, day, *, include_external=False):
     stays=list(service.present(user.company,day).filter(camp=camp).select_related('camp','equipment__type__parent__category','equipment__type__category','equipment__catalogue_group'))
-    records={r.equipment_id:r for r in EquipmentDayRecord.objects.filter(company=user.company,camp=camp,date=day).select_related('equipment__type__parent__category','equipment__type__category','equipment__catalogue_group','planning_type__category','construction_object','work','work_item','recorded_by')}
+    uat_allocations=EquipmentDayAllocation.objects.filter(source_kind='UAT').select_related('uat_task__waybill')
+    records={r.equipment_id:r for r in EquipmentDayRecord.objects.filter(company=user.company,camp=camp,date=day).select_related('equipment__type__parent__category','equipment__type__category','equipment__catalogue_group','planning_type__category','construction_object','work','work_item','recorded_by').prefetch_related(Prefetch('allocations',queryset=uat_allocations,to_attr='uat_allocations'))}
     machines={stay.equipment_id:stay.equipment for stay in stays}
     if include_external:machines.update({pk:r.equipment for pk,r in records.items()})
     locations={stay.equipment_id:stay for stay in stays}
@@ -156,6 +157,14 @@ def _rows(user, camp, day, *, include_external=False):
     rows=[];conditions=service.conditions_for(user.company,machines,[day])
     for machine in machines.values():
         record=records.get(machine.pk);control=controls.get(machine.pk);stay=locations.get(machine.pk)
+        uat_waybills=[];seen_waybills=set()
+        for allocation in record.uat_allocations if record else ():
+            try:bill=allocation.uat_task.waybill
+            except ObjectDoesNotExist:continue
+            if bill.pk in seen_waybills:continue
+            seen_waybills.add(bill.pk)
+            query=urlencode({'from':bill.document_date.isoformat(),'to':bill.document_date.isoformat(),'focus':bill.pk})
+            uat_waybills.append({'number':bill.number or bill.source_id,'url':reverse('accounts:uat_waybills')+'?'+query+'#uat-waybill-'+str(bill.pk)})
         condition=conditions[machine.pk,day];status=record.status if record else ''
         owner=control.locked_by if control and control.expires_at and control.expires_at>timezone.now() else None
         actual=machine.type.parent if machine.type.parent_id else machine.type
@@ -163,6 +172,7 @@ def _rows(user, camp, day, *, include_external=False):
             'at_camp':bool(stay and stay.camp_id==camp.pk),'whereabouts':'Местонахождение: '+stay.camp.name if stay else 'Нахождение в местонахождении не оформлено',
             'status':status,'status_label':dict(USES).get(status,'Не заполнено'),'owner':owner,
             'planning_type':record.planning_type if include_external and record and record.planning_type_id else actual,'actual_planning_type':actual,
+            'uat_waybills':uat_waybills,
             'target':f'work:{record.work_id}:{record.work_item_id or 0}' if record and record.work_id else f'object:{record.construction_object_id}' if record and record.construction_object_id else '',
             'details_url':reverse('production:transport_details',args=[machine.pk])+'?'+urlencode({'camp':camp.pk,'date':str(day)}),
             'history_url':reverse('production:transport_history',args=[machine.pk])})

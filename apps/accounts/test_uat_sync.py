@@ -199,6 +199,27 @@ class UatSynchronizationTests(TestCase):
         self.assertEqual(bill.fact_status, 'CONFLICT')
         self.assertEqual(EquipmentFact.objects.get().comment, 'Ручной факт')
 
+    def test_transport_fact_opens_its_exact_uat_waybill(self):
+        apply_uat_report(self.run, self.report())
+        department = UatDepartment.objects.get(source_id='D1')
+        department.construction_object = self.obj;department.camp = self.camp
+        department.save(update_fields=['construction_object','camp'])
+        rebuild_facts(self.company)
+        bill=UatWaybill.objects.get(source_id='W1')
+        self.client.force_login(self.admin)
+        page=self.client.get(reverse('production:transport_board'),{
+            'construction_object':self.obj.pk,'camp':self.camp.pk,'date':'2026-11-20',
+        })
+        self.assertEqual(page.status_code,200)
+        link=page.context['rows'][0]['uat_waybills'][0]
+        self.assertEqual(link['number'],'PL-1')
+        self.assertIn(f'focus={bill.pk}',link['url'])
+        self.assertContains(page,'Открыть путевой лист №PL-1')
+        focused=self.client.get(reverse('accounts:uat_waybills'),{'focus':bill.pk})
+        self.assertEqual(focused.context['page'].paginator.count,1)
+        self.assertEqual(focused.context['focus'],bill.pk)
+        self.assertContains(focused,f'id="uat-waybill-{bill.pk}" open')
+
     def test_construction_object_form_assigns_many_departments(self):
         first = UatDepartment.objects.create(company=self.company, source_id='D1', name='Первое')
         second = UatDepartment.objects.create(company=self.company, source_id='D2', name='Второе')
