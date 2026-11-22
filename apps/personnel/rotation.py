@@ -163,6 +163,24 @@ def rotation_stats(rows):
         'vacancies':sum(not row.get('person') for row in rows),'unknown':sum(row['state']=='UNKNOWN' for row in people)}
 
 
+def filter_rotation_rows(rows,*,query='',position=None,state=''):
+    """Filter an already calculated roster without rebuilding its calendars."""
+    result=list(rows)
+    if query:
+        terms=query.casefold().split()
+        result=[row for row in result if all(term in (' '.join([row['person'].display_name if row['person'] else 'Вакансия',row['person'].display_employee_number if row['person'] else '',row['position_label']])).casefold() for term in terms)]
+    if position:result=filter_position(result,position)
+    if state=='WORKING':result=[row for row in result if row.get('person') and is_work(_day_code(row))]
+    elif state=='TRAVEL':result=[row for row in result if row.get('person') and _day_code(row)=='ДП']
+    elif state=='ARRIVING':result=[row for row in result if row.get('person') and row.get('arriving')]
+    elif state=='DEPARTING':result=[row for row in result if row.get('person') and row.get('departing')]
+    elif state=='DEPARTURE_OVERDUE':result=[row for row in result if row.get('person') and row.get('departure_warning')=='overdue']
+    elif state=='DEPARTURE_PENDING':result=[row for row in result if row.get('person') and row.get('departure_warning')=='soon']
+    elif state=='ARRIVAL_OVERDUE':result=[row for row in result if row.get('person') and row.get('arrival_overdue')]
+    elif state:result=[row for row in result if row['state']==state]
+    return result
+
+
 def rotation_rows(company,camps,day,*,construction_object=None,query='',position=None,state='',include_unassigned=False):
     from .rotation_calendar import stays_by_person,anchor_for,description,cycle_definition,effective_schedule,schedule_label
     camp_ids={camp.pk for camp in camps};camp_names={camp.name.strip().casefold():camp for camp in camps}
@@ -296,18 +314,7 @@ def rotation_rows(company,camps,day,*,construction_object=None,query='',position
     for slot in vacant:
         calendar=calendar_for(slot)
         rows.append({'person':None,'slot':slot,'camp':slot_camp(slot),'position_label':slot.group.position,'state':'VACANCY','state_label':'Открытая вакансия','schedule_label':str(slot.pattern) if slot.pattern_id else 'Не назначен','codes':[calendar.get(str(d),'') for d in days],'today_code':calendar.get(str(day),'')})
-    if query:
-        terms=query.casefold().split()
-        rows=[row for row in rows if all(term in (' '.join([row['person'].display_name if row['person'] else 'Вакансия',row['person'].display_employee_number if row['person'] else '',row['position_label']])).casefold() for term in terms)]
-    if position:rows=filter_position(rows,position)
-    if state=='WORKING':rows=[row for row in rows if row.get('person') and is_work(_day_code(row))]
-    elif state=='TRAVEL':rows=[row for row in rows if row.get('person') and _day_code(row)=='ДП']
-    elif state=='ARRIVING':rows=[row for row in rows if row.get('person') and row.get('arriving')]
-    elif state=='DEPARTING':rows=[row for row in rows if row.get('person') and row.get('departing')]
-    elif state=='DEPARTURE_OVERDUE':rows=[row for row in rows if row.get('person') and row.get('departure_warning')=='overdue']
-    elif state=='DEPARTURE_PENDING':rows=[row for row in rows if row.get('person') and row.get('departure_warning')=='soon']
-    elif state=='ARRIVAL_OVERDUE':rows=[row for row in rows if row.get('person') and row.get('arrival_overdue')]
-    elif state:rows=[row for row in rows if row['state']==state]
+    rows=filter_rotation_rows(rows,query=query,position=position,state=state)
     from apps.resources.group_order import position_order
     from apps.resources.models import Position
     positions=list(Position.objects.filter(company=company).select_related('planning_mapping__brigade__group'))

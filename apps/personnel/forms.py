@@ -158,7 +158,7 @@ class MovementForm(forms.Form):
     direct_fact=forms.BooleanField(label='Временный режим: провести факт сразу, без заявки',required=False,
         help_text='Используйте только на этапе настройки рабочих мест. Дата может быть сегодняшней или прошедшей; будущий факт запрещён.')
     snapshot=forms.CharField(widget=forms.HiddenInput)
-    def __init__(self,*args,company,camp,day,fixed_employee=None,allow_direct=False,**kwargs):
+    def __init__(self,*args,company,camp,day,fixed_employee=None,allow_direct=False,lightweight=False,**kwargs):
         from .models import Camp
         from .housing import present_stays
         from apps.resources.models import Employee
@@ -174,6 +174,20 @@ class MovementForm(forms.Form):
         direct=allow_direct and str(self.data.get('direct_fact','')).lower() in {'1','on','true'}
         self.fields['date'].label=('Фактическая' if direct else 'Плановая')+' дата '+suffix
         employees=Employee.objects.filter(company=company).exclude(personnel_card__dispatcher_removed_at__isnull=False).select_related('position')
+        self.lightweight=lightweight
+        self.personal=bool(fixed_employee)
+        self.camp=camp;self.company=company
+        self.fields['target'].queryset=Camp.objects.filter(company=company,is_active=True)
+        if lightweight:
+            # The roster page keeps this form in its response context for the
+            # optimistic-lock snapshot, but does not render it. Avoid loading
+            # all current residents and active employees until the dispatcher
+            # actually opens the movement screen.
+            self.fields['employees'].queryset=Employee.objects.none()
+            if not allow_direct:self.fields.pop('direct_fact')
+            for field in self.fields.values():field.widget.attrs.setdefault('class','form-select' if isinstance(field.widget,forms.Select) else 'form-control')
+            if 'direct_fact' in self.fields:self.fields['direct_fact'].widget.attrs['class']='form-check-input'
+            return
         present=present_stays(company,day).filter(camp=camp).values('person__employee_id')
         # Keep present archived employees selectable for departure/transfer.
         # The browser switches the visible choices without clearing the form.
@@ -187,14 +201,11 @@ class MovementForm(forms.Form):
         self.fields['employees'].widget.attrs['data-present-by-camp']=json.dumps(by_camp)
         self.fields['employees'].widget.attrs['data-active-employees']=','.join(str(pk) for pk in employees.filter(is_active=True).values_list('pk',flat=True))
         self.fields['employees'].label_from_instance=lambda e:e.display_name+(' · '+str(e.position) if e.position_id else '')+(' · № '+e.employee_number if e.employee_number else '')+(' · архивный, находится в местонахождении' if not e.is_active else '')
-        self.personal=bool(fixed_employee)
         if fixed_employee:
             self.initial['employees']=[fixed_employee]
             self.fields['employees'].queryset=self.fields['employees'].queryset.filter(pk=fixed_employee)
             self.fields['employees'].disabled=True
             self.fields['employees'].label='Сотрудник'
-        self.camp=camp;self.company=company
-        self.fields['target'].queryset=Camp.objects.filter(company=company,is_active=True)
         if not allow_direct:self.fields.pop('direct_fact')
         for field in self.fields.values():field.widget.attrs.setdefault('class','form-select' if isinstance(field.widget,forms.Select) else 'form-control')
         if 'direct_fact' in self.fields:self.fields['direct_fact'].widget.attrs['class']='form-check-input'

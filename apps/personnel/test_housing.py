@@ -125,6 +125,22 @@ class HousingTests(TestCase):
         client=Client(enforce_csrf_checks=True);client.force_login(self.hr)
         self.assertEqual(client.post(reverse('personnel:link_people')).status_code,403)
 
+    def test_dispatcher_roster_skips_movement_forms_and_reports_stage_timings(self):
+        from .rotation import rotation_rows
+        from .housing_plan import position_headers
+        with patch('apps.personnel.housing_views.MovementRecommendationForm',side_effect=AssertionError('recommendation forms must stay lazy')), \
+             patch('apps.personnel.rotation.rotation_rows',wraps=rotation_rows) as rotation_spy, \
+             patch('apps.personnel.housing_plan.position_headers',wraps=position_headers) as position_spy:
+            response=self.client.get(reverse('personnel:housing'),{'camp':self.a.pk})
+        self.assertEqual(response.status_code,200)
+        self.assertEqual(rotation_spy.call_count,1)
+        self.assertEqual(position_spy.call_count,1)
+        self.assertTrue(response.context['form'].lightweight)
+        self.assertEqual(response.context['form'].initial['snapshot'],housing.movement_snapshot(self.hr))
+        timings=response['Server-Timing']
+        for stage in ['filters','forms','rotation','plan','grouping','navigation','render']:
+            self.assertIn(stage+';dur=',timings)
+
     def test_camp_form_saves_many_to_many_links_and_keeps_existing_fact(self):
         response=self.client.post(reverse('personnel:camp_edit',args=[self.a.pk]),{'version':self.a.updated_at.isoformat(),'name':self.a.name,'objects_served':[self.obj3.pk,self.obj2.pk],'is_active':'on'})
         self.assertEqual(response.status_code,302)
