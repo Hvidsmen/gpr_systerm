@@ -12,6 +12,7 @@ urlpatterns=[
     path('housing/',housing_views.workspace,name='housing'),
     path('housing/export/',housing_views.roster_export,name='housing_export'),
     path('perevakhta/',housing_views.movement_reviews,name='movement_reviews'),
+    path('perevakhta/position-summary/',housing_views.movement_position_summary,name='movement_position_summary'),
     path('perevakhta/excel-sites/',housing_views.movement_excel_sites,name='movement_excel_sites'),
     path('perevakhta/excel-sites/<int:pk>/delete/',housing_views.movement_excel_site_delete,name='movement_excel_site_delete'),
     path('housing/movement-requests/<int:pk>/',housing_views.movement_review_accept,name='movement_review_accept'),

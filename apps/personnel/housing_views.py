@@ -499,15 +499,84 @@ def review_request_context(request):
     filter_values={'q':query,'date':raw_date,'project':raw_project if project_id else '',
         'camp':raw_camp if camp_id else '','status':status,'source':source}
     filter_query=urlencode({key:value for key,value in filter_values.items() if value})
+    summary_query=urlencode({key:value for key,value in filter_values.items() if key in {'date','project','camp','source'} and value})
     return {'personnel_section':'reviews','movement_review_requests':rows,'dispatcher_review_requests':dispatcher_rows,'excel_review_requests':excel_rows,'excel_history_requests':excel_history,'review_tab':tab,'review_arrival':tab=='arrival','review_date':raw_date,'review_sort':sort,'review_sort_options':sort_options,
         'review_query':query,'review_project':project_id,'review_camp':camp_id,'review_status':status,'review_source':source,
         'review_projects':Project.objects.filter(company=request.user.company).order_by('name','pk'),
         'review_camps':Camp.objects.filter(company=request.user.company).order_by('name','pk'),
         'review_statuses':MovementReviewRequest.STATUSES,'review_sources':MovementReviewRequest.SOURCES,
-        'review_filter_query':filter_query,'review_has_filters':bool(filter_query),
+        'review_filter_query':filter_query,'review_summary_query':summary_query,'review_has_filters':bool(filter_query),
         'arrival_review_requests':rows if tab=='arrival' else [],'departure_review_requests':rows if tab=='departure' else [],
         'arrival_review_count':counts['arrival'],'departure_review_count':counts['departure'],
         'movement_review_open_count':counts['opened']}
+
+
+def movement_position_summary_data(company,day,project_id=None,camp_id=None,source=''):
+    from .rotation import rotation_rows
+    camps=Camp.objects.filter(company=company)
+    if camp_id:camps=camps.filter(pk=camp_id)
+    elif project_id:camps=camps.filter(object_links__construction_object__project_id=project_id).distinct()
+    camps=list(camps.order_by('name','pk'))
+    roster,_,_=rotation_rows(company,camps,day,include_unassigned=not project_id and not camp_id)
+    summary={}
+    def item(label):
+        label=' '.join(str(label or '').split()) or 'Должность не указана';key=label.casefold()
+        return summary.setdefault(key,{'position':label,'on_rest':0,'arrival_new':0,'arrival_staff':0,
+            'arrival_other':0,'departure':0})
+    for row in roster:
+        if not row.get('person') or row.get('state')!='MO':continue
+        assigned=row.get('assignment_object')
+        if project_id and (not assigned or assigned.project_id!=project_id):continue
+        item(row.get('position_label'))['on_rest']+=1
+    requests=MovementReviewRequest.objects.filter(company=company).exclude(status__in=['COMPLETED','ACCEPTED','CANCELLED']).filter(
+        Q(requested_movement_date=day)|Q(requested_movement_date__isnull=True,movement_date=day))
+    if project_id:requests=requests.filter(Q(construction_object__project_id=project_id)|Q(site_object__project_id=project_id))
+    if camp_id:requests=requests.filter(Q(kind='ARRIVAL',to_camp_id=camp_id)|(
+        ~Q(kind='ARRIVAL')&Q(from_camp_id=camp_id)))
+    if source in dict(MovementReviewRequest.SOURCES):requests=requests.filter(source=source)
+    values=requests.values('kind','status','employment_kind','planning_position_name','position_name','person__employee__position__name')
+    for request_row in values:
+        row=item(request_row['planning_position_name'] or request_row['position_name'] or request_row['person__employee__position__name'])
+        if request_row['kind']=='ARRIVAL':
+            if request_row['employment_kind']=='NEW':row['arrival_new']+=1
+            elif request_row['employment_kind']=='STAFF':row['arrival_staff']+=1
+            else:row['arrival_other']+=1
+        elif request_row['status'] in {'OPEN','PENDING_APPROVAL','RETURNED','PEREVAKHTA'}:row['departure']+=1
+    rows=sorted(summary.values(),key=lambda row:row['position'].casefold())
+    for number,row in enumerate(rows,start=1):row['number']=number;row['total']=sum(row[key] for key in (
+        'on_rest','arrival_new','arrival_staff','arrival_other','departure'))
+    totals={key:sum(row[key] for row in rows) for key in ('on_rest','arrival_new','arrival_staff','arrival_other','departure')}
+    return rows,totals,camps
+
+
+@login_required
+@require_http_methods(['GET'])
+def movement_position_summary(request):
+    from core.permissions import require_roles
+    from apps.projects.models import Project
+    require_roles(request.user,{'ADMIN','HR_HEAD'})
+    try:day=forms.DateField().clean(request.GET.get('date') or timezone.localdate())
+    except ValidationError:day=timezone.localdate()
+    raw_project=request.GET.get('project','');project_id=int(raw_project) if raw_project.isdigit() else None
+    raw_camp=request.GET.get('camp','');camp_id=int(raw_camp) if raw_camp.isdigit() else None
+    source=request.GET.get('source','')
+    if source not in dict(MovementReviewRequest.SOURCES):source=''
+    rows,totals,selected_camps=movement_position_summary_data(request.user.company,day,project_id,camp_id,source)
+    if request.GET.get('export')=='xlsx':
+        values=[['№ п.п.','Должность','Кол-во сотрудников на МО','Поставлены на заезд (новые)',
+            'Поставлены на заезд (штат)','Поставлены на заезд (перевод / командировка)','Планируются к выезду']]
+        values.extend([[row['number'],row['position'],row['on_rest'],row['arrival_new'],row['arrival_staff'],
+            row['arrival_other'],row['departure']] for row in rows])
+        values.append(['','ИТОГО',totals['on_rest'],totals['arrival_new'],totals['arrival_staff'],
+            totals['arrival_other'],totals['departure']])
+        return workbook_response(f'movement-position-summary-{day}.xlsx','Сводка по должностям',values)
+    params={'date':day.isoformat(),'project':project_id or '','camp':camp_id or '','source':source}
+    export_query=urlencode({**params,'export':'xlsx'})
+    return render(request,'personnel/movement_position_summary.html',{'personnel_section':'reviews','day':day,'rows':rows,
+        'totals':totals,'projects':Project.objects.filter(company=request.user.company).order_by('name','pk'),
+        'camps':Camp.objects.filter(company=request.user.company).order_by('name','pk'),'selected_project':project_id,
+        'selected_camp':camp_id,'selected_source':source,'sources':MovementReviewRequest.SOURCES,
+        'selected_camps':selected_camps,'export_query':export_query})
 
 
 @login_required

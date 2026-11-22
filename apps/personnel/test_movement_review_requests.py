@@ -637,6 +637,37 @@ class MovementReviewRequestTests(TestCase):
         self.assertEqual([row.pk for row in page.context['excel_review_requests']],[departure.pk])
         self.assertEqual(page.context['dispatcher_review_requests'],[])
 
+    def test_position_summary_combines_rest_arrivals_departures_and_exports_excel(self):
+        day=timezone.localdate();position=self.employee.display_position
+        self.slot.status='МО';self.slot.housing_camp=self.camp
+        self.slot.save(update_fields=['status','housing_camp','updated_at'])
+        for employment_kind in ('NEW','STAFF','TRANSFER'):
+            MovementReviewRequest.objects.create(company=self.company,person=self.person,kind='ARRIVAL',movement_date=day,
+                to_camp=self.camp,construction_object=self.obj,requested_by=self.personnel,
+                planning_position_name=position,employment_kind=employment_kind)
+        MovementReviewRequest.objects.create(company=self.company,person=self.person,kind='DEPARTURE',movement_date=day,
+            from_camp=self.camp,construction_object=self.obj,requested_by=self.personnel,planning_position_name=position)
+        MovementReviewRequest.objects.create(company=self.company,person=self.person,kind='DEPARTURE',movement_date=day,
+            from_camp=self.camp,construction_object=self.obj,requested_by=self.personnel,planning_position_name=position,status='AT_HUB')
+        MovementReviewRequest.objects.create(company=self.company,person=self.person,kind='ARRIVAL',movement_date=day,
+            to_camp=self.camp,construction_object=self.obj,requested_by=self.personnel,planning_position_name=position,
+            employment_kind='NEW',status='CANCELLED')
+        self.client.force_login(self.reviewer);url=reverse('personnel:movement_position_summary')
+        params={'date':day.isoformat(),'camp':self.camp.pk}
+        response=self.client.get(url,params)
+        row=next(item for item in response.context['rows'] if item['position']==position)
+        self.assertEqual((row['on_rest'],row['arrival_new'],row['arrival_staff'],row['arrival_other'],row['departure']),
+            (1,1,1,1,1))
+        self.assertContains(response,'Сводный отчёт по должностям');self.assertContains(response,'Планируются к выезду')
+        export=self.client.get(url,{**params,'export':'xlsx'})
+        self.assertEqual(export['Content-Type'],'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        from openpyxl import load_workbook
+        book=load_workbook(BytesIO(export.content),read_only=True);sheet=book.active
+        self.assertEqual([cell.value for cell in sheet[1]],['№ п.п.','Должность','Кол-во сотрудников на МО',
+            'Поставлены на заезд (новые)','Поставлены на заезд (штат)',
+            'Поставлены на заезд (перевод / командировка)','Планируются к выезду'])
+        book.close()
+
     def test_dispatcher_and_excel_requests_are_separate_and_newest_first(self):
         day=timezone.localdate()
         older=MovementReviewRequest.objects.create(company=self.company,person=self.person,kind='ARRIVAL',movement_date=day,to_camp=self.camp,requested_by=self.personnel)
