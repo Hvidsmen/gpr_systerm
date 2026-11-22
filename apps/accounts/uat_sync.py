@@ -10,6 +10,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from apps.production.models import EquipmentActivity, EquipmentDayAllocation, EquipmentDayRecord, EquipmentFact
+from apps.production.transport_details_models import EquipmentDayDetails
 from apps.resources.models import Employee, Equipment, EquipmentType
 from .models import Company, OneCConnection, UatDepartment, UatRepairSheet, UatVehicle, UatWaybill, UatWaybillTask
 
@@ -268,6 +269,27 @@ def clear_old_facts(waybills):
     tasks = UatWaybillTask.objects.filter(waybill__in=waybills)
     fact_ids = set(tasks.exclude(fact=None).values_list('fact_id', flat=True))
     allocation_ids = set(tasks.exclude(allocation=None).values_list('allocation_id', flat=True))
+    day_records=list(EquipmentDayRecord.objects.filter(allocations__pk__in=allocation_ids).distinct())
+    detail_keys={(record.company_id,record.equipment_id,record.date) for record in day_records}
+    details={}
+    if detail_keys:
+        dates=[key[2] for key in detail_keys]
+        candidates=EquipmentDayDetails.objects.filter(company_id__in={key[0] for key in detail_keys},
+            equipment_id__in={key[1] for key in detail_keys},date__range=(min(dates),max(dates)))
+        details={(row.company_id,row.equipment_id,row.date):row for row in candidates if (row.company_id,row.equipment_id,row.date) in detail_keys}
+    for record in day_records:
+        detail=details.get((record.company_id,record.equipment_id,record.date))
+        if not detail:continue
+        source=dict(detail.source_details or {});changed=[]
+        for slot in ('shift_one','shift_two'):
+            tracked=source.pop('uat_'+slot+'_employee_id',None)
+            source.pop('uat_'+slot,None)
+            field=slot+'_employee_id'
+            if tracked and getattr(detail,field)==tracked:
+                setattr(detail,field,None);changed.append(slot+'_employee')
+        if source!=detail.source_details:
+            detail.source_details=source;changed.append('source_details')
+        if changed:detail.save(update_fields=[*changed,'updated_at'])
     activity_ids = set(EquipmentDayAllocation.objects.filter(pk__in=allocation_ids).exclude(activity=None).values_list('activity_id', flat=True))
     tasks.update(fact=None, allocation=None)
     EquipmentDayAllocation.objects.filter(pk__in=allocation_ids).delete()
@@ -277,6 +299,46 @@ def clear_old_facts(waybills):
     for fact in EquipmentFact.objects.filter(pk__in=fact_ids):
         if not fact.uat_tasks.exists() and fact.comment.startswith('[УАТ]'):
             fact.delete()
+
+
+def sync_uat_drivers(day_record_ids):
+    """Project matched UAT drivers into the two daily roster slots without replacing manual choices."""
+    records={row.pk:row for row in EquipmentDayRecord.objects.filter(pk__in=day_record_ids).select_related('company','equipment','camp')}
+    grouped=defaultdict(list)
+    allocations=EquipmentDayAllocation.objects.filter(day_record_id__in=records,source_kind='UAT').select_related(
+        'uat_task__waybill__driver_1','uat_task__waybill__driver_2')
+    for allocation in allocations:
+        try:bill=allocation.uat_task.waybill
+        except UatWaybillTask.DoesNotExist:continue
+        for number in (1,2):
+            employee=getattr(bill,f'driver_{number}')
+            name=getattr(bill,f'driver_{number}_name')
+            status=getattr(bill,f'driver_{number}_status')
+            if not employee and not name:continue
+            key=('employee',employee.pk) if employee else ('name',normalized(name))
+            if key not in {item[0] for item in grouped[allocation.day_record_id]}:
+                label=name or employee.display_name
+                if not employee:label += ' · '+getattr(bill,f'get_driver_{number}_status_display')()
+                grouped[allocation.day_record_id].append((key,employee,label))
+    for record_id,candidates in grouped.items():
+        record=records[record_id]
+        detail,_=EquipmentDayDetails.objects.get_or_create(company=record.company,equipment=record.equipment,date=record.date,
+            defaults={'camp':record.camp,'source_details':{}})
+        source=dict(detail.source_details or {});changed=[];reserved=set()
+        for slot in ('shift_one','shift_two'):
+            employee_id=getattr(detail,slot+'_employee_id')
+            if employee_id:reserved.add(('employee',employee_id))
+        free=[slot for slot in ('shift_one','shift_two') if not getattr(detail,slot+'_employee_id') and not source.get('uat_'+slot)]
+        for key,employee,label in candidates:
+            if key in reserved or not free:continue
+            slot=free.pop(0);source['uat_'+slot]=label
+            source['uat_'+slot+'_employee_id']=employee.pk if employee else None
+            if employee:
+                setattr(detail,slot+'_employee',employee);changed.append(slot+'_employee')
+            reserved.add(key)
+        if detail.camp_id!=record.camp_id:detail.camp=record.camp;changed.append('camp')
+        if source!=detail.source_details:detail.source_details=source;changed.append('source_details')
+        if changed:detail.save(update_fields=[*changed,'updated_at'])
 
 
 def fact_number(machine, source):
@@ -312,7 +374,7 @@ def _create_uat_allocation(company,bill,task,machine,project,obj,camp,department
 
 
 def create_facts(company, waybills):
-    summary_groups = defaultdict(list);bill_states = defaultdict(list)
+    summary_groups = defaultdict(list);bill_states = defaultdict(list);day_record_ids=set()
     for bill in waybills.select_related('vehicle__equipment', 'department__project', 'department__construction_object', 'department__camp', 'driver_1').prefetch_related('tasks__department__project', 'tasks__department__construction_object', 'tasks__department__camp'):
         tasks = list(bill.tasks.all())
         if not bill.is_active or not bill.posted:
@@ -334,10 +396,12 @@ def create_facts(company, waybills):
             try:
                 with transaction.atomic():
                     allocation,warning=_create_uat_allocation(company,bill,task,machine,project,obj,camp,department)
+                day_record_ids.add(allocation.day_record_id)
                 summary_groups[(bill.document_date, machine.pk, project.pk, obj.pk if obj else None)].append((bill,task,machine,project,obj,department,allocation))
                 bill_states[bill.pk].append(('CREATED', f'детальная запись №{allocation.pk}'+(f' · {warning}' if warning else '')))
             except Exception as exc:
                 bill_states[bill.pk].append(('FAILED', f'строка {task.line_number}: {str(exc)[:180]}'))
+    sync_uat_drivers(day_record_ids)
     for (_day, _machine, _project, _obj), rows in summary_groups.items():
         bill, _task, machine, project, obj, _department, _allocation = rows[0]
         equipment_type = machine.type.parent if machine.type.parent_id else machine.type

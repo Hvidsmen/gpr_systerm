@@ -146,7 +146,8 @@ def equipment_choices(request):
 
 def _rows(user, camp, day, *, include_external=False):
     stays=list(service.present(user.company,day).filter(camp=camp).select_related('camp','equipment__type__parent__category','equipment__type__category','equipment__catalogue_group'))
-    uat_allocations=EquipmentDayAllocation.objects.filter(source_kind='UAT').select_related('uat_task__waybill')
+    uat_allocations=EquipmentDayAllocation.objects.filter(source_kind='UAT').select_related(
+        'uat_task__waybill__driver_1','uat_task__waybill__driver_2')
     records={r.equipment_id:r for r in EquipmentDayRecord.objects.filter(company=user.company,camp=camp,date=day).select_related('equipment__type__parent__category','equipment__type__category','equipment__catalogue_group','planning_type__category','construction_object','work','work_item','recorded_by').prefetch_related(Prefetch('allocations',queryset=uat_allocations,to_attr='uat_allocations'))}
     machines={stay.equipment_id:stay.equipment for stay in stays}
     if include_external:machines.update({pk:r.equipment for pk,r in records.items()})
@@ -157,10 +158,20 @@ def _rows(user, camp, day, *, include_external=False):
     rows=[];conditions=service.conditions_for(user.company,machines,[day])
     for machine in machines.values():
         record=records.get(machine.pk);control=controls.get(machine.pk);stay=locations.get(machine.pk)
-        uat_waybills=[];seen_waybills=set()
+        uat_waybills=[];uat_drivers=[];seen_waybills=set();seen_drivers=set()
         for allocation in record.uat_allocations if record else ():
             try:bill=allocation.uat_task.waybill
             except ObjectDoesNotExist:continue
+            for number in (1,2):
+                employee=getattr(bill,f'driver_{number}')
+                name=getattr(bill,f'driver_{number}_name')
+                if not employee and not name:continue
+                key=('employee',employee.pk) if employee else ('name',' '.join(name.split()).casefold())
+                if key in seen_drivers:continue
+                seen_drivers.add(key)
+                label=name or employee.display_name
+                if not employee:label+=' · '+getattr(bill,f'get_driver_{number}_status_display')()
+                uat_drivers.append({'employee':employee,'label':label})
             if bill.pk in seen_waybills:continue
             seen_waybills.add(bill.pk)
             query=urlencode({'from':bill.document_date.isoformat(),'to':bill.document_date.isoformat(),'focus':bill.pk})
@@ -172,7 +183,7 @@ def _rows(user, camp, day, *, include_external=False):
             'at_camp':bool(stay and stay.camp_id==camp.pk),'whereabouts':'Местонахождение: '+stay.camp.name if stay else 'Нахождение в местонахождении не оформлено',
             'status':status,'status_label':dict(USES).get(status,'Не заполнено'),'owner':owner,
             'planning_type':record.planning_type if include_external and record and record.planning_type_id else actual,'actual_planning_type':actual,
-            'uat_waybills':uat_waybills,
+            'uat_waybills':uat_waybills,'uat_drivers':uat_drivers,
             'target':f'work:{record.work_id}:{record.work_item_id or 0}' if record and record.work_id else f'object:{record.construction_object_id}' if record and record.construction_object_id else '',
             'details_url':reverse('production:transport_details',args=[machine.pk])+'?'+urlencode({'camp':camp.pk,'date':str(day)}),
             'history_url':reverse('production:transport_history',args=[machine.pk])})

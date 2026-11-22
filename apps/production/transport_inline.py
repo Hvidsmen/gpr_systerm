@@ -118,6 +118,10 @@ def save_cell(user,camp,day,machine,field,value,signed,session,project=None,cons
         if not form.is_valid():raise ValidationError(['; '.join(errors) for errors in form.errors.values()])
         row=form.save(commit=False);row.company=user.company;row.equipment=machine;row.camp=camp;row.date=day
         if not row.pk:row.recorded_by=user;row.source_details={name:value for name,value in previous.source_details.items() if name not in {'shift_one','shift_two'}} if previous else {}
+        if field in EMPLOYEE_FIELDS:
+            slot='shift_one' if field=='shift_one_employee' else 'shift_two'
+            row.source_details=dict(row.source_details or {})
+            row.source_details.pop('uat_'+slot,None);row.source_details.pop('uat_'+slot+'_employee_id',None)
         row.full_clean();row.save();transport._bump(controls[machine.pk])
     else:raise ValidationError('Это поле нельзя изменить в таблице.')
     require_fact_day(user,day)
@@ -171,9 +175,20 @@ def prepare_rows(user,camp,day,rows,editable):
     for row in rows:
         detail=details.get(row['machine'].pk)
         initial={name:None for name in EMPLOYEE_FIELDS} if detail and detail.date<day else {}
+        occupied={getattr(detail,name+'_id',None) for name in EMPLOYEE_FIELDS} if detail and detail.date==day else set()
+        free=[name for name in ('shift_one_employee','shift_two_employee') if not detail or detail.date<day or not getattr(detail,name+'_id',None)]
+        uat_sources={}
+        for driver in row.get('uat_drivers',()):
+            employee=driver['employee']
+            if employee and employee.pk in occupied:continue
+            if not free:break
+            field=free.pop(0);uat_sources[field]=driver['label']
+            if employee:initial[field]=employee.pk;occupied.add(employee.pk)
         form=DetailsForm(instance=detail,initial=initial,company=user.company,lazy=True,status_catalogue=status_catalogue,prefix='machine-'+str(row['machine'].pk))
         for name,field in form.fields.items():
             field.disabled=not editable or name in EMPLOYEE_FIELDS and row['status']!='WORKED';field.widget.attrs['aria-label']=str(field.label)+' · '+str(row['machine'])
         row['details_form']=form
-        for bound in form.visible_fields():bound.source_value=(detail.source_details.get(source_names.get(bound.name,''),'') if detail and not (bound.name in EMPLOYEE_FIELDS and detail.date<day) else '')
+        for bound in form.visible_fields():
+            source_name=source_names.get(bound.name,'')
+            bound.source_value=(detail.source_details.get('uat_'+source_name,detail.source_details.get(source_name,'')) if detail and not (bound.name in EMPLOYEE_FIELDS and detail.date<day) else '') or uat_sources.get(bound.name,'')
         row['details']=detail

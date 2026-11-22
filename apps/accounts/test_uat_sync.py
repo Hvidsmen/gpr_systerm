@@ -5,6 +5,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from apps.production.models import EquipmentFact
+from apps.production.transport_details_models import EquipmentDayDetails
 from apps.personnel.models import Camp, CampObjectLink
 from apps.projects.forms import ConstructionObjectForm
 from apps.projects.models import ConstructionObject, Project
@@ -109,6 +110,10 @@ class UatSynchronizationTests(TestCase):
         department.save(update_fields=['camp'])
         rebuild_facts(self.company)
         bill.refresh_from_db()
+        details=EquipmentDayDetails.objects.get(equipment=self.machine,date='2026-11-20')
+        self.assertEqual(details.shift_one_employee,self.driver)
+        self.assertEqual(details.source_details['uat_shift_one'],'Иванов Иван Иванович')
+        self.assertIn('Сотрудник не найден',details.source_details['uat_shift_two'])
         fact = EquipmentFact.objects.get()
         self.assertEqual(bill.fact_status, 'CREATED')
         self.assertEqual(fact.machine_hours, Decimal('7.13'))
@@ -206,11 +211,15 @@ class UatSynchronizationTests(TestCase):
         department.save(update_fields=['construction_object','camp'])
         rebuild_facts(self.company)
         bill=UatWaybill.objects.get(source_id='W1')
+        # Existing UAT facts created before driver projection still display the
+        # matched driver immediately; the next synchronization persists it.
+        EquipmentDayDetails.objects.all().delete()
         self.client.force_login(self.admin)
         page=self.client.get(reverse('production:transport_board'),{
             'construction_object':self.obj.pk,'camp':self.camp.pk,'date':'2026-11-20',
         })
         self.assertEqual(page.status_code,200)
+        self.assertEqual(str(page.context['rows'][0]['details_form']['shift_one_employee'].value()),str(self.driver.pk))
         link=page.context['rows'][0]['uat_waybills'][0]
         self.assertEqual(link['number'],'PL-1')
         self.assertIn(f'focus={bill.pk}',link['url'])

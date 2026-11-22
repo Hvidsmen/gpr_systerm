@@ -17,7 +17,8 @@ class DetailsForm(forms.ModelForm):
     def __init__(self,*args,company,lazy=False,status_catalogue=None,**kwargs):
         super().__init__(*args,**kwargs)
         for name in EMPLOYEE_FIELDS:
-            retained=getattr(self.instance,name+'_id',None)
+            initial=self.initial.get(name)
+            retained=getattr(self.instance,name+'_id',None) or getattr(initial,'pk',initial)
             queryset=Employee.objects.filter(company=company).filter(Q(is_active=True)|Q(pk=retained)).select_related('position__planning_mapping__brigade__group')
             if not lazy:
                 from apps.resources.group_order import ordered
@@ -26,7 +27,7 @@ class DetailsForm(forms.ModelForm):
             self.fields[name].label_from_instance=lambda e:e.display_name+(' · № '+e.employee_number if e.employee_number else '')+(' · '+str(e.position) if e.position_id else '')
             if lazy:
                 field=self.fields[name]
-                employee=getattr(self.instance,name,None) if retained and self.initial.get(name) is not None else None
+                employee=queryset.filter(pk=retained).first() if retained else None
                 field.choices=[('','Не выбран'),*([(employee.pk,field.label_from_instance(employee))] if employee else [])]
                 field.widget.attrs['data-transport-employees']='1'
                 field.widget.attrs['data-remote-search-url']=reverse('production:transport_employee_choices')
