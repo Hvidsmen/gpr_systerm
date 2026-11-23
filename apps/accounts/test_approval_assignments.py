@@ -6,7 +6,7 @@ from django.urls import reverse
 from apps.planning.models import WorkTask
 from apps.personnel.models import Camp
 from apps.projects.models import ConstructionObject,Project
-from .approval_assignments import assignee,authorized,replace
+from .approval_assignments import assignee,authorized,disable,replace
 from .approval_mail import send_notice
 from .invitation_models import CompanyMailSettings
 from .models import ApprovalAssignment,ApprovalAssignmentChange,ApprovalNotice,ApprovalObserver,Company,Role,User
@@ -78,6 +78,59 @@ class ApprovalAssignmentTests(TestCase):
         self.assertContains(page,'Приоритет условий')
         self.assertContains(page,'Все строительные объекты')
         self.assertContains(page,'Все местонахождения')
+
+    def test_admin_page_has_explicit_add_edit_and_delete_controls(self):
+        replace(company=self.company,process='MOVEMENT',stage_code='MANAGER',user=self.manager_first,
+            actor=self.admin,construction_object=self.parent,camp=self.camp)
+        self.client.force_login(self.admin)
+        page=self.client.get(reverse('accounts:approval_settings'))
+        self.assertContains(page,'Добавить условие')
+        self.assertContains(page,'Изменить')
+        self.assertContains(page,'Удалить')
+        self.assertContains(page,self.parent.name)
+        self.assertContains(page,self.camp.name)
+
+    def test_admin_can_replace_approver_in_one_rule(self):
+        row=replace(company=self.company,process='MOVEMENT',stage_code='MANAGER',user=self.manager_first,
+            actor=self.admin,construction_object=self.parent,camp=self.camp)
+        self.client.force_login(self.admin);url=reverse('accounts:approval_settings')
+        response=self.client.post(url,{'action':'save_assignment','assignment_id':row.pk,
+            'user':self.manager_second.pk,'reason':'Новый ответственный'})
+        self.assertRedirects(response,url)
+        row.refresh_from_db()
+        self.assertTrue(row.is_active);self.assertEqual(row.user,self.manager_second)
+        change=row.history.first()
+        self.assertEqual(change.previous_user,self.manager_first)
+        self.assertEqual(change.new_user,self.manager_second)
+        self.assertEqual(change.reason,'Новый ответственный')
+
+    def test_admin_soft_deletes_rule_and_can_add_same_scope_again(self):
+        row=replace(company=self.company,process='MOVEMENT',stage_code='MANAGER',user=self.manager_first,
+            actor=self.admin,construction_object=self.parent,camp=self.camp)
+        self.client.force_login(self.admin);url=reverse('accounts:approval_settings')
+        response=self.client.post(url,{'action':'delete_assignment','assignment_id':row.pk,'reason':''})
+        self.assertRedirects(response,url)
+        row.refresh_from_db();self.assertTrue(row.is_active)
+        response=self.client.post(url,{'action':'delete_assignment','assignment_id':row.pk,
+            'reason':'Условие больше не применяется'})
+        self.assertRedirects(response,url)
+        row.refresh_from_db();self.assertFalse(row.is_active)
+        self.assertIsNone(row.history.first().new_user)
+        response=self.client.post(url,{'action':'add_assignment','process':'MOVEMENT','stage_code':'MANAGER',
+            'construction_object':self.parent.pk,'camp':self.camp.pk,'user':self.manager_second.pk})
+        self.assertRedirects(response,url)
+        row.refresh_from_db()
+        self.assertTrue(row.is_active);self.assertEqual(row.user,self.manager_second)
+        self.assertEqual(ApprovalAssignment.objects.filter(company=self.company,process='MOVEMENT',
+            stage_code='MANAGER',construction_object=self.parent,camp=self.camp).count(),1)
+
+    def test_disabled_specific_rule_falls_back_to_global_rule(self):
+        replace(company=self.company,process='MOVEMENT',stage_code='MANAGER',user=self.manager_first,actor=self.admin)
+        scoped=replace(company=self.company,process='MOVEMENT',stage_code='MANAGER',user=self.manager_second,
+            actor=self.admin,construction_object=self.parent)
+        disable(company=self.company,assignment_id=scoped.pk,actor=self.admin,reason='Отключено')
+        self.assertEqual(assignee(self.company,'MOVEMENT','MANAGER','MANAGER',
+            construction_object=self.child),self.manager_first)
 
     def test_admin_can_add_and_remove_company_wide_observer(self):
         self.client.force_login(self.admin);url=reverse('accounts:approval_settings')

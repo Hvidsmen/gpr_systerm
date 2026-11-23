@@ -57,7 +57,7 @@ def assignment(company, process, stage_code, *, construction_object=None, camp=N
     """Resolve the most specific rule that matches the approval context."""
     object_path=_object_path(company,construction_object);camp_id=getattr(camp,'pk',camp)
     rows=list(ApprovalAssignment.objects.select_related('user__role','construction_object','camp').filter(
-        company=company,process=process,stage_code=stage_code))
+        company=company,process=process,stage_code=stage_code,is_active=True))
     ranked=[]
     for row in rows:
         if row.construction_object_id and row.construction_object_id not in object_path:continue
@@ -104,16 +104,31 @@ def replace(*, company, process, stage_code, user, actor, reason='', constructio
     if camp and camp.company_id!=company.pk:raise ValidationError('Местонахождение другой компании.')
     current=ApprovalAssignment.objects.select_for_update().filter(company=company,process=process,stage_code=stage_code,
         construction_object=construction_object,camp=camp).first()
-    previous=current.user if current else None
+    previous=current.user if current and current.is_active else None
     if previous and previous.pk==user.pk:return current
     reason=reason.strip()
     if previous and not reason:raise ValidationError('При замене согласующего укажите причину.')
     if current:
-        current.user=user;current.changed_by=actor;current.save(update_fields=['user','changed_by','updated_at'])
+        current.user=user;current.is_active=True;current.changed_by=actor
+        current.save(update_fields=['user','is_active','changed_by','updated_at'])
     else:
         current=ApprovalAssignment.objects.create(company=company,process=process,stage_code=stage_code,
             construction_object=construction_object,camp=camp,user=user,changed_by=actor)
     ApprovalAssignmentChange.objects.create(assignment=current,previous_user=previous,new_user=user,changed_by=actor,reason=reason)
+    return current
+
+
+@transaction.atomic
+def disable(*, company, assignment_id, actor, reason):
+    """Disable one scoped rule without deleting its audited history."""
+    current=ApprovalAssignment.objects.select_for_update().filter(company=company,pk=assignment_id,is_active=True).first()
+    if current is None:raise ValidationError('Условие уже удалено или не найдено.')
+    reason=reason.strip()
+    if not reason:raise ValidationError('Укажите причину удаления условия.')
+    previous=current.user;current.is_active=False;current.changed_by=actor
+    current.save(update_fields=['is_active','changed_by','updated_at'])
+    ApprovalAssignmentChange.objects.create(assignment=current,previous_user=previous,new_user=None,
+        changed_by=actor,reason=reason)
     return current
 
 

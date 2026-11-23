@@ -143,6 +143,7 @@ class ApprovalAssignment(BaseTimestampedModel):
     camp = models.ForeignKey('personnel.Camp', null=True, blank=True, on_delete=models.PROTECT,
         related_name='approval_assignments', verbose_name='Местонахождение')
     user = models.ForeignKey(User, on_delete=models.PROTECT, related_name='approval_assignments', verbose_name='Согласующий')
+    is_active = models.BooleanField('Действует', default=True)
     changed_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
 
     class Meta:

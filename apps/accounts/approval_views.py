@@ -4,7 +4,7 @@ from django.core.exceptions import ValidationError
 from django.shortcuts import redirect, render
 
 from core.permissions import require_roles
-from .approval_assignments import PROCESS_STAGES, replace, sync_active
+from .approval_assignments import PROCESS_STAGES, disable, replace, sync_active
 from .models import ApprovalAssignment, ApprovalAssignmentChange, ApprovalNotice, ApprovalObserver, Role, User
 
 
@@ -32,31 +32,48 @@ def settings_view(request):
             count=retry_failed(request.user.company)
             messages.success(request,f'Повторная отправка поставлена в очередь: {count}.')
             return redirect('accounts:approval_settings')
+        if request.POST.get('action')=='delete_assignment':
+            try:
+                row=disable(company=request.user.company,assignment_id=request.POST.get('assignment_id'),
+                    actor=request.user,reason=request.POST.get('reason',''))
+                sync_active(request.user.company,row.process)
+                messages.success(request,'Условие удалено. История изменений сохранена.')
+            except ValidationError as exc:messages.error(request,'; '.join(exc.messages))
+            return redirect('accounts:approval_settings')
         process=request.POST.get('process','');stage_code=request.POST.get('stage_code','')
         try:
             from apps.projects.models import ConstructionObject
             from apps.personnel.models import Camp
             user=User.objects.get(pk=request.POST.get('user'),company=request.user.company)
-            object_id=request.POST.get('construction_object','').strip()
-            camp_id=request.POST.get('camp','').strip()
-            construction_object=ConstructionObject.objects.get(pk=object_id,company=request.user.company) if object_id else None
-            camp=Camp.objects.get(pk=camp_id,company=request.user.company) if camp_id else None
+            if request.POST.get('action')=='save_assignment':
+                current=ApprovalAssignment.objects.get(pk=request.POST.get('assignment_id'),company=request.user.company,is_active=True)
+                process=current.process;stage_code=current.stage_code
+                construction_object=current.construction_object;camp=current.camp
+            else:
+                object_id=request.POST.get('construction_object','').strip()
+                camp_id=request.POST.get('camp','').strip()
+                construction_object=ConstructionObject.objects.get(pk=object_id,company=request.user.company) if object_id else None
+                camp=Camp.objects.get(pk=camp_id,company=request.user.company) if camp_id else None
             if camp and process!='MOVEMENT':
                 raise ValidationError('Условие по местонахождению применяется только к заявкам на заезд и выезд.')
+            if request.POST.get('action')=='add_assignment' and ApprovalAssignment.objects.filter(
+                    company=request.user.company,process=process,stage_code=stage_code,
+                    construction_object=construction_object,camp=camp,is_active=True).exists():
+                raise ValidationError('Такое условие уже есть. Используйте кнопку «Изменить» рядом с ним.')
             replace(company=request.user.company,process=process,stage_code=stage_code,user=user,
                     actor=request.user,reason=request.POST.get('reason',''),
                     construction_object=construction_object,camp=camp)
             sync_active(request.user.company,process)
             messages.success(request,'Условие согласования сохранено. Открытые задания переназначены; завершённые решения не изменены.')
             return redirect('accounts:approval_settings')
-        except User.DoesNotExist:
+        except (User.DoesNotExist,ApprovalAssignment.DoesNotExist):
             messages.error(request,'Выберите пользователя своей компании.')
         except (ConstructionObject.DoesNotExist,Camp.DoesNotExist):
             messages.error(request,'Выберите строительный объект и местонахождение своей компании.')
         except ValidationError as exc:
             messages.error(request,'; '.join(exc.messages))
     assignments={}
-    for row in ApprovalAssignment.objects.filter(company=request.user.company).select_related('user__role','construction_object','camp'):
+    for row in ApprovalAssignment.objects.filter(company=request.user.company,is_active=True).select_related('user__role','construction_object','camp'):
         assignments.setdefault((row.process,row.stage_code),[]).append(row)
     role_names=dict(Role.objects.values_list('code','name'))
     rows=[]
