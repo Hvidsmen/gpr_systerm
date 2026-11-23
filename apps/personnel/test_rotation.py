@@ -90,6 +90,8 @@ class RotationTests(TestCase):
         self.assertTrue(form.cleaned_data['camps'])
         self.assertTrue(form.fields['camps'].widget.allow_multiple_selected)
         self.assertIn(' multiple', str(form['camps']))
+        self.assertContains(page,'Строительный объект')
+        self.assertContains(page,'Местонахождение')
         self.assertNotContains(page,'Все объекты')
 
     def test_work_and_travel_counts_use_selected_day_not_hours_or_vacancies(self):

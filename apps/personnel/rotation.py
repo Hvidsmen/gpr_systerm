@@ -48,7 +48,7 @@ def object_scope_ids(company,obj):
 
 
 class RotationFilter(forms.Form):
-    construction_object=forms.ModelChoiceField(label='Проект',queryset=ConstructionObject.objects.none(),required=True,empty_label=None)
+    construction_object=forms.ModelChoiceField(label='Строительный объект',queryset=ConstructionObject.objects.none(),required=True,empty_label=None)
     camps=forms.ModelMultipleChoiceField(label='Местонахождение',queryset=Camp.objects.none(),required=True,
         widget=forms.SelectMultiple(attrs={'size':6,'data-personnel-searchable':''}))
     date=forms.DateField(label='На дату',widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
