@@ -21,7 +21,7 @@ from .recruitment_forms import (RequestForm,CandidateForm,ArrivalForm,RevisionFo
 from .recruitment_models import (POOL_UNAVAILABLE_STAGES,RECRUITMENT_SYSTEM_STAGES,RECRUITMENT_TERMINAL_STAGES,
     RECRUITMENT_APPROVAL_FLOW)
 from .recruitment_stage_flow import (WorkingDayCalendar,advance as advance_approval_stage,
-    allowed_manual_stage,stage_status)
+    allowed_manual_stage,return_to_stage as return_approval_stage,stage_status)
 from .recruitment_employment import REVIEW_KEY,link_candidate,remove_employee_from_other_reviews,review_employee_ids,review_employees
 
 
@@ -482,6 +482,25 @@ def candidate_stage_advance(request,pk):
     else:
         if ajax:return JsonResponse({'id':row.pk,'stage':row.stage,'stage_label':row.get_stage_display()})
         messages.success(request,f'{row.full_name}: установлен этап «{row.get_stage_display()}».')
+    if request.POST.get('return_to')=='card':return redirect('personnel:recruitment_candidate_card',pk=pk)
+    return redirect('personnel:recruitment_list')
+
+
+@login_required
+@require_POST
+def candidate_stage_return(request,pk):
+    require_roles(request.user,service.RECRUIT)
+    ajax=request.headers.get('X-Requested-With')=='XMLHttpRequest'
+    try:
+        row=return_approval_stage(pk,request.user.company,request.user,
+            request.POST.get('stage',''),request.POST.get('reason',''))
+    except TalentPoolCandidate.DoesNotExist:raise Http404
+    except ValidationError as exc:
+        if ajax:return JsonResponse({'error':'; '.join(exc.messages)},status=422)
+        messages.error(request,'; '.join(exc.messages))
+    else:
+        if ajax:return JsonResponse({'id':row.pk,'stage':row.stage,'stage_label':row.get_stage_display()})
+        messages.success(request,f'{row.full_name}: карточка возвращена на этап «{row.get_stage_display()}».')
     if request.POST.get('return_to')=='card':return redirect('personnel:recruitment_candidate_card',pk=pk)
     return redirect('personnel:recruitment_list')
 

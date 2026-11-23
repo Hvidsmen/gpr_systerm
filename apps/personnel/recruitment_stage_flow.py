@@ -20,6 +20,16 @@ STAGE_RULES={
     'READY':(None,None),
 }
 NEXT_STAGE=dict(zip(RECRUITMENT_APPROVAL_FLOW,RECRUITMENT_APPROVAL_FLOW[1:]))
+STEP_CONFIRMATIONS={
+    'MANAGER_APPROVAL':(('manager_approved','manager_approved_on','согласование Заказчика'),),
+    'SECURITY_CHECK':(('security_approved','security_approved_on','согласование СЭБ'),),
+    'MEDICAL_DOCUMENTS':(('medical_exam_passed','medical_exam_on','медкомиссия'),),
+    'PASS_PROCESSING':(
+        ('pass_documents_sent','pass_documents_sent_on','направление документов на пропуск'),
+        ('pass_ready','pass_ready_on','готовый пропуск'),
+    ),
+}
+MANUAL_EXIT_STAGES={'RESERVE','REJECTED','WITHDRAWN','NOT_REQUIRED','NO_SHOW'}
 
 
 def stage_from_confirmation_values(manager,security,medical,pass_documents,pass_ready):
@@ -34,6 +44,32 @@ def stage_from_confirmation_values(manager,security,medical,pass_documents,pass_
 def stage_from_confirmations(candidate):
     return stage_from_confirmation_values(candidate.manager_approved,candidate.security_approved,
         candidate.medical_exam_passed,candidate.pass_documents_sent,candidate.pass_ready)
+
+
+def stage_consistency_warning(candidate):
+    """Describe legacy approval data without changing it."""
+    stage=candidate.stage if hasattr(candidate,'stage') else candidate.get('stage')
+    if stage not in RECRUITMENT_APPROVAL_FLOW:return ''
+    if not hasattr(candidate,'manager_approved'):return ''
+    current_index=RECRUITMENT_APPROVAL_FLOW.index(stage)
+    missing=[]
+    for step in RECRUITMENT_APPROVAL_FLOW[:current_index]:
+        for flag,_,label in STEP_CONFIRMATIONS.get(step,()):
+            if not getattr(candidate,flag):missing.append(label)
+    if missing:
+        return ('Текущий этап не соответствует отметкам: не подтверждено '+', '.join(missing)+
+            '. Этап не изменён автоматически. Исправьте отметки или верните карточку на предыдущий этап с указанием причины.')
+    completed_ahead=[]
+    current_confirmations=STEP_CONFIRMATIONS.get(stage,())
+    if current_confirmations and all(getattr(candidate,flag) for flag,_,_ in current_confirmations):
+        completed_ahead.extend(label for _,_,label in current_confirmations)
+    for step in RECRUITMENT_APPROVAL_FLOW[current_index+1:]:
+        for flag,_,label in STEP_CONFIRMATIONS.get(step,()):
+            if getattr(candidate,flag):completed_ahead.append(label)
+    if completed_ahead:
+        return ('Отметки заполнены дальше текущего этапа: '+', '.join(completed_ahead)+
+            '. Этап не изменён автоматически; для перехода используйте кнопку «Этап выполнен».')
+    return ''
 
 
 class WorkingDayCalendar:
@@ -84,8 +120,10 @@ def stage_status(candidate,*,today=None,calendar=None):
         'flow':[{'number':number,'code':code,'label':labels[code],
             'state':'done' if number<step else 'current' if number==step else 'upcoming'}
             for number,code in enumerate(RECRUITMENT_APPROVAL_FLOW,1)],
-        'is_final':stage=='READY','can_advance':stage not in {'PASS_PROCESSING','READY'},
-        'auto_complete':stage=='PASS_PROCESSING'}
+        'is_final':stage=='READY','can_advance':stage!='READY','auto_complete':False,
+        'consistency_warning':stage_consistency_warning(candidate),
+        'return_options':[{'code':code,'label':labels[code]}
+            for code in RECRUITMENT_APPROVAL_FLOW[:step-1]]}
     if limit is None:
         result.update(label='Маршрут согласования завершён',css='success')
         return result
@@ -115,6 +153,9 @@ def stage_status(candidate,*,today=None,calendar=None):
 
 def allowed_manual_stage(current,target):
     """Managed steps cannot be skipped through a generic stage selector."""
+    if current in STAGE_RULES:
+        if target not in STAGE_RULES:return target in MANUAL_EXIT_STAGES
+        return target==current
     if target not in STAGE_RULES:return True
     if current not in STAGE_RULES:return target==RECRUITMENT_APPROVAL_FLOW[0]
     return target==current
@@ -123,11 +164,6 @@ def allowed_manual_stage(current,target):
 @transaction.atomic
 def advance(candidate_id,company,actor,note=''):
     candidate=TalentPoolCandidate.objects.select_for_update().get(pk=candidate_id,company=company)
-    if candidate.stage in RECRUITMENT_APPROVAL_FLOW:
-        confirmed_stage=stage_from_confirmations(candidate)
-        if confirmed_stage!=candidate.stage:
-            candidate.stage=confirmed_stage
-            candidate.save(update_fields=['stage','updated_at'])
     next_stage=NEXT_STAGE.get(candidate.stage)
     if not next_stage:
         if candidate.stage=='READY':raise ValidationError('Кандидат уже готов к заезду: маршрут согласования завершён.')
@@ -135,14 +171,21 @@ def advance(candidate_id,company,actor,note=''):
     previous=candidate.stage
     today=timezone.localdate()
     update_fields=['stage','is_active','updated_at']
+    previous_steps=RECRUITMENT_APPROVAL_FLOW[:RECRUITMENT_APPROVAL_FLOW.index(previous)]
+    missing_prior=[]
+    for step in previous_steps:
+        for flag,_,label in STEP_CONFIRMATIONS.get(step,()):
+            if not getattr(candidate,flag):missing_prior.append(label)
+    if missing_prior:
+        raise ValidationError('Нельзя завершить этап: не подтверждено '+', '.join(missing_prior)+'.')
     if previous=='MANAGER_APPROVAL':
-        candidate.manager_approved=True;candidate.manager_approved_on=today
+        candidate.manager_approved=True;candidate.manager_approved_on=candidate.manager_approved_on or today
         update_fields+=['manager_approved','manager_approved_on']
     elif previous=='SECURITY_CHECK':
-        candidate.security_approved=True;candidate.security_approved_on=today
+        candidate.security_approved=True;candidate.security_approved_on=candidate.security_approved_on or today
         update_fields+=['security_approved','security_approved_on']
     elif previous=='MEDICAL_DOCUMENTS':
-        candidate.medical_exam_passed=True;candidate.medical_exam_on=today
+        candidate.medical_exam_passed=True;candidate.medical_exam_on=candidate.medical_exam_on or today
         update_fields+=['medical_exam_passed','medical_exam_on']
     elif previous=='PASS_PROCESSING':
         required=(('согласование Заказчика',candidate.manager_approved),('согласование СЭБ',candidate.security_approved),
@@ -156,4 +199,41 @@ def advance(candidate_id,company,actor,note=''):
     candidate.save(update_fields=update_fields)
     TalentPoolStageEvent.objects.create(company=company,candidate=candidate,from_stage=previous,
         to_stage=next_stage,actor=actor,note=note.strip() or 'Текущий этап выполнен.')
+    return candidate
+
+
+@transaction.atomic
+def return_to_stage(candidate_id,company,actor,target_stage,reason):
+    """Return a managed route to an earlier step and invalidate that step and everything after it."""
+    reason=reason.strip()
+    if not reason:raise ValidationError('Укажите причину возврата на предыдущий этап.')
+    candidate=TalentPoolCandidate.objects.select_for_update().get(pk=candidate_id,company=company)
+    if candidate.stage not in RECRUITMENT_APPROVAL_FLOW:
+        raise ValidationError('Возврат доступен только для этапов маршрута согласования.')
+    current_index=RECRUITMENT_APPROVAL_FLOW.index(candidate.stage)
+    if target_stage not in RECRUITMENT_APPROVAL_FLOW[:current_index]:
+        raise ValidationError('Выберите один из предыдущих этапов.')
+    target_index=RECRUITMENT_APPROVAL_FLOW.index(target_stage)
+    previous=candidate.stage
+    update_fields=['stage','is_active','source_data','updated_at']
+    source=dict(candidate.source_data or {})
+    source_keys={
+        'manager_approved':('manager_approval',),
+        'security_approved':('security_approval',),
+        'medical_exam_passed':('medical_exam',),
+        'pass_documents_sent':('pass_documents','pass_submitted'),
+        'pass_ready':('pass_received',),
+    }
+    for step in RECRUITMENT_APPROVAL_FLOW[target_index:]:
+        for flag,date_field,_ in STEP_CONFIRMATIONS.get(step,()):
+            setattr(candidate,flag,False);setattr(candidate,date_field,None)
+            update_fields.extend([flag,date_field])
+            for key in source_keys.get(flag,()):source[key]=''
+    candidate.ready_for_arrival=False;candidate.ready_for_arrival_on=None
+    source['readiness']='';source['funnel_stage']=target_stage
+    update_fields+=['ready_for_arrival','ready_for_arrival_on']
+    candidate.stage=target_stage;candidate.is_active=True;candidate.source_data=source
+    candidate.save(update_fields=set(update_fields))
+    TalentPoolStageEvent.objects.create(company=company,candidate=candidate,from_stage=previous,
+        to_stage=target_stage,actor=actor,note=reason)
     return candidate

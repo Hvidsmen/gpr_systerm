@@ -170,6 +170,23 @@
       }catch(reason){if(button)button.disabled=false;if(status)status.textContent=reason.message||'Не удалось завершить этап.';error(reason.message||'Не удалось завершить этап.');}
       return;
     }
+    const returnForm=event.target.closest('[data-candidate-stage-return]');
+    if(returnForm){
+      const target=returnForm.closest('[data-candidate-inline-target]');
+      if(!target)return;
+      event.preventDefault();
+      const button=returnForm.querySelector('button[type="submit"]');
+      const status=returnForm.querySelector('[data-candidate-stage-return-status]');
+      if(button)button.disabled=true;if(status)status.textContent='Возвращаем…';error('');
+      try{
+        const response=await fetch(returnForm.action,{method:'POST',body:new FormData(returnForm),credentials:'same-origin',headers:{'X-Requested-With':'XMLHttpRequest'}});
+        const payload=await response.json().catch(function(){return {};});
+        if(!response.ok)throw new Error(payload.error||'Не удалось вернуть этап.');
+        await loadInlineTarget(target,true);refreshFunnelNavigation();
+        const refreshedStatus=target.querySelector('[data-candidate-inline-status]');if(refreshedStatus)refreshedStatus.textContent='Этап возвращён.';
+      }catch(reason){if(button)button.disabled=false;if(status)status.textContent=reason.message||'Не удалось вернуть этап.';error(reason.message||'Не удалось вернуть этап.');}
+      return;
+    }
     const form=event.target.closest('[data-candidate-stage-form]');if(!form)return;
     event.preventDefault();
     const button=form.querySelector('button[type="submit"]');const status=form.querySelector('[data-candidate-stage-status]');

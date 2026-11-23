@@ -1106,7 +1106,7 @@ class RecruitmentTests(TestCase):
         self.assertContains(invalid,'data-save-state="error"',html=False,status_code=422)
         self.assertContains(invalid,'Исправьте ошибки и сохраните.',status_code=422)
         response=self.client.post(url,{
-            'full_name':'Изменённый кандидат','stage':'SCREENING','stage_reason':'Повторная проверка',
+            'full_name':'Изменённый кандидат','stage':'MANAGER_APPROVAL','stage_reason':'',
             'position':self.position.pk,'construction_object':self.obj.pk,'camp':self.camp.pk,
             'phone':'89990000000','birth_date':'1990-02-03','passport':'1234 567890',
             'base_city':self.base_city.pk,'new_base_city':'','ready_for_arrival_on':'',
@@ -1115,12 +1115,10 @@ class RecruitmentTests(TestCase):
         self.assertEqual(response.status_code,200);self.assertContains(response,'Сохранено.')
         pool.refresh_from_db()
         self.assertEqual((pool.full_name,pool.stage,pool.phone, pool.notes),
-            ('Изменённый кандидат','SCREENING','89990000000','Изменено на главной'))
+            ('Изменённый кандидат','MANAGER_APPROVAL','89990000000','Изменено на главной'))
         self.assertEqual(pool.source_data['agency'],'Историческое агентство')
         self.assertEqual(pool.position,self.position);self.assertEqual(pool.construction_object,self.obj)
-        event=TalentPoolStageEvent.objects.get(candidate=pool)
-        self.assertEqual((event.from_stage,event.to_stage,event.note),
-            ('MANAGER_APPROVAL','SCREENING','Повторная проверка'))
+        self.assertFalse(TalentPoolStageEvent.objects.filter(candidate=pool).exists())
 
     def test_inline_candidate_card_is_read_only_outside_recruitment_role_and_company_scoped(self):
         from .models import TalentPoolCandidate
@@ -1183,11 +1181,15 @@ class RecruitmentTests(TestCase):
             'pass_documents_sent':'1','pass_documents_sent_on':'2026-11-22',
             'pass_ready':'1','pass_ready_on':'2026-11-23','responsible_hr':'','notes':''})
         self.assertEqual(response.status_code,200)
+        pool.refresh_from_db();self.assertEqual(pool.stage,'PASS_PROCESSING');self.assertFalse(pool.ready_for_arrival)
+        self.assertTrue(pool.pass_documents_sent);self.assertTrue(pool.pass_ready)
+        response=self.client.post(url)
+        self.assertRedirects(response,reverse('personnel:recruitment_list'),fetch_redirect_response=False)
         pool.refresh_from_db();self.assertEqual(pool.stage,'READY');self.assertTrue(pool.ready_for_arrival)
-        self.assertEqual(pool.ready_for_arrival_on,date(2026,11,23));self.assertTrue(pool.pass_documents_sent);self.assertTrue(pool.pass_ready)
+        self.assertEqual(pool.ready_for_arrival_on,date(2026,11,23))
         self.assertTrue(TalentPoolStageEvent.objects.filter(candidate=pool,from_stage='PASS_PROCESSING',to_stage='READY').exists())
 
-    def test_inline_save_returns_managed_stage_to_first_unconfirmed_step(self):
+    def test_inline_save_does_not_return_managed_stage_to_first_unconfirmed_step(self):
         from .models import TalentPoolStageEvent
         candidate=self.candidate(status='MEDICAL_DOCUMENTS',ready_on=None);pool=candidate.pool_candidate
         self.client.force_login(self.recruiter)
@@ -1198,10 +1200,54 @@ class RecruitmentTests(TestCase):
             'medical_exam_on':'','pass_documents_sent_on':'','pass_ready_on':'',
             'responsible_hr':'','notes':''})
         self.assertEqual(response.status_code,200)
-        pool.refresh_from_db();self.assertEqual(pool.stage,'MANAGER_APPROVAL')
-        self.assertContains(response,'Направлен на согласование Заказчику')
+        pool.refresh_from_db();self.assertEqual(pool.stage,'MEDICAL_DOCUMENTS')
+        self.assertContains(response,'Этап не изменён автоматически')
+        self.assertFalse(TalentPoolStageEvent.objects.filter(candidate=pool).exists())
+
+    def test_inline_save_preserves_completed_confirmation_steps(self):
+        candidate=self.candidate(status='MEDICAL_DOCUMENTS',ready_on=None);pool=candidate.pool_candidate
+        pool.manager_approved=True;pool.manager_approved_on=date(2026,11,18)
+        pool.security_approved=True;pool.security_approved_on=date(2026,11,19)
+        pool.save(update_fields=['manager_approved','manager_approved_on','security_approved','security_approved_on','updated_at'])
+        self.client.force_login(self.recruiter)
+        response=self.client.post(reverse('personnel:recruitment_candidate_inline',args=[pool.pk]),{
+            'full_name':pool.full_name,'stage':'MEDICAL_DOCUMENTS','position':self.position.pk,
+            'construction_object':self.obj.pk,'phone':pool.phone,'base_city':'','new_base_city':'',
+            'ready_for_arrival_on':'','manager_approved_on':'','security_approved_on':'',
+            'medical_exam_on':'','pass_documents_sent_on':'','pass_ready_on':'',
+            'responsible_hr':'','notes':'Обычное сохранение'})
+        self.assertEqual(response.status_code,200)
+        pool.refresh_from_db();self.assertEqual(pool.stage,'MEDICAL_DOCUMENTS')
+        self.assertTrue(pool.manager_approved);self.assertEqual(pool.manager_approved_on,date(2026,11,18))
+        self.assertTrue(pool.security_approved);self.assertEqual(pool.security_approved_on,date(2026,11,19))
+
+    def test_managed_stage_return_requires_reason_and_clears_returned_steps(self):
+        candidate=self.candidate(status='PASS_PROCESSING',ready_on=None);pool=candidate.pool_candidate
+        pool.manager_approved=True;pool.manager_approved_on=date(2026,11,18)
+        pool.security_approved=True;pool.security_approved_on=date(2026,11,19)
+        pool.medical_exam_passed=True;pool.medical_exam_on=date(2026,11,20)
+        pool.pass_documents_sent=True;pool.pass_documents_sent_on=date(2026,11,21)
+        pool.pass_ready=True;pool.pass_ready_on=date(2026,11,22)
+        pool.save(update_fields=['manager_approved','manager_approved_on','security_approved','security_approved_on',
+            'medical_exam_passed','medical_exam_on','pass_documents_sent','pass_documents_sent_on',
+            'pass_ready','pass_ready_on','updated_at'])
+        self.client.force_login(self.recruiter)
+        inline=self.client.get(reverse('personnel:recruitment_candidate_inline',args=[pool.pk]))
+        self.assertContains(inline,'data-candidate-stage-return',html=False)
+        self.assertContains(inline,'name="reason"',html=False);self.assertContains(inline,'Подтвердить возврат')
+        url=reverse('personnel:recruitment_candidate_stage_return',args=[pool.pk])
+        response=self.client.post(url,{'stage':'SECURITY_CHECK','reason':''},HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertEqual(response.status_code,422,response.content.decode())
+        pool.refresh_from_db();self.assertEqual(pool.stage,'PASS_PROCESSING')
+        response=self.client.post(url,{'stage':'SECURITY_CHECK','reason':'СЭБ запросила повторную проверку'},
+            HTTP_X_REQUESTED_WITH='XMLHttpRequest')
+        self.assertEqual(response.status_code,200)
+        pool.refresh_from_db();self.assertEqual(pool.stage,'SECURITY_CHECK');self.assertTrue(pool.manager_approved)
+        self.assertFalse(pool.security_approved);self.assertIsNone(pool.security_approved_on)
+        self.assertFalse(pool.medical_exam_passed);self.assertFalse(pool.pass_documents_sent);self.assertFalse(pool.pass_ready)
         event=TalentPoolStageEvent.objects.get(candidate=pool)
-        self.assertEqual((event.from_stage,event.to_stage),('MEDICAL_DOCUMENTS','MANAGER_APPROVAL'))
+        self.assertEqual((event.from_stage,event.to_stage,event.note),
+            ('PASS_PROCESSING','SECURITY_CHECK','СЭБ запросила повторную проверку'))
 
     def test_approval_stage_advance_supports_inline_ajax_without_redirect(self):
         candidate=self.candidate(status='MANAGER_APPROVAL',ready_on=None);pool=candidate.pool_candidate
@@ -1224,6 +1270,9 @@ class RecruitmentTests(TestCase):
         self.client.force_login(self.recruiter)
         skipped=self.client.post(reverse('personnel:recruitment_candidate_stage',args=[pool.pk]),{'stage':'MEDICAL_DOCUMENTS'})
         self.assertEqual(skipped.status_code,400)
+        returned=self.client.post(reverse('personnel:recruitment_candidate_stage',args=[pool.pk]),{'stage':'SCREENING'})
+        self.assertEqual(returned.status_code,400)
+        pool.refresh_from_db();self.assertEqual(pool.stage,'MANAGER_APPROVAL')
         inline=self.client.get(reverse('personnel:recruitment_candidate_inline',args=[pool.pk]))
         self.assertContains(inline,'Этап 1 из 5');self.assertContains(inline,'Просрочено на 2 дн.')
         self.assertContains(inline,'Этап выполнен → Направлен на согласование в СЭБ')
@@ -1277,9 +1326,9 @@ class RecruitmentTests(TestCase):
         self.assertEqual(row.source_data['position'],'Электромонтажник');self.assertEqual(row.source_data['construction_site'],'КТП')
         self.assertEqual(row.source_data['birth_date'],'1990-02-03');self.assertEqual(row.source_data['base_city'],'Уфа')
         self.assertEqual(row.responsible_hr,specialist);self.assertEqual(row.source_data['responsible_hr'],'Петрова')
-        self.assertTrue(row.ready_for_arrival);self.assertEqual(row.ready_for_arrival_on.isoformat(),'2026-11-21')
+        self.assertTrue(row.ready_for_arrival);self.assertEqual(row.ready_for_arrival_on.isoformat(),'2026-11-20')
         self.assertTrue(row.manager_approved);self.assertTrue(row.security_approved);self.assertTrue(row.medical_exam_passed)
-        self.assertTrue(row.pass_documents_sent);self.assertTrue(row.pass_ready);self.assertEqual(row.stage,'READY')
+        self.assertTrue(row.pass_documents_sent);self.assertTrue(row.pass_ready);self.assertEqual(row.stage,'NEW')
         page=self.client.get(reverse('personnel:recruitment_pool'))
         self.assertContains(page,'Электромонтажник');self.assertContains(page,'Все данные кандидата')
         duplicate=self.client.post(reverse('personnel:recruitment_pool_create'),{

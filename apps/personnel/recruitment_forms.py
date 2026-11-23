@@ -9,7 +9,7 @@ from .models import BaseCity,RecruitmentRequest, RecruitmentCandidate,Recruitmen
 from .recruitment_models import (RECRUITMENT_STAGES,POOL_UNAVAILABLE_STAGES,RECRUITMENT_SYSTEM_STAGES,
     RECRUITMENT_TERMINAL_STAGES,RECRUITMENT_APPROVAL_FLOW)
 from .recruitment import allowed_camps, validate_documents
-from .recruitment_stage_flow import stage_from_confirmations
+from .recruitment_stage_flow import MANUAL_EXIT_STAGES,STEP_CONFIRMATIONS,allowed_manual_stage
 from .employee_widgets import RemoteEmployeeSelect
 
 
@@ -133,6 +133,9 @@ class CandidateForm(forms.ModelForm):
 
 
 class TalentPoolForm(forms.ModelForm):
+    confirmation_pairs=(('ready_for_arrival','ready_for_arrival_on'),('manager_approved','manager_approved_on'),
+        ('security_approved','security_approved_on'),('medical_exam_passed','medical_exam_on'),
+        ('pass_documents_sent','pass_documents_sent_on'),('pass_ready','pass_ready_on'))
     stage_reason=forms.CharField(label='Причина изменения этапа',required=False,widget=forms.Textarea(attrs={'rows':2}),
         help_text='Например: повторно направлен на рассмотрение после прежнего отказа.')
     birth_date=forms.DateField(label='Дата рождения',required=False,widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
@@ -160,6 +163,8 @@ class TalentPoolForm(forms.ModelForm):
             'pass_ready_on':forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'})}
     def __init__(self,*args,company,user,**kwargs):
         super().__init__(*args,**kwargs);self.instance.company=company
+        self._original_stage=self.instance.stage
+        self._original_confirmations={field:getattr(self.instance,field) for pair in self.confirmation_pairs for field in pair}
         if not self.instance.pk:self.instance.created_by=user
         editable_stages=[choice for choice in self.fields['stage'].choices if choice[0] not in RECRUITMENT_SYSTEM_STAGES]
         if self.instance.stage in RECRUITMENT_SYSTEM_STAGES:
@@ -167,9 +172,9 @@ class TalentPoolForm(forms.ModelForm):
             self.fields['stage'].choices=[current,*editable_stages];self.fields['stage'].disabled=True
             self.fields['stage'].help_text='Системный этап изменяется автоматически по данным портала и ЗУП.'
         elif self.instance.stage in RECRUITMENT_APPROVAL_FLOW:
-            other_managed=set(RECRUITMENT_APPROVAL_FLOW)-{self.instance.stage}
-            self.fields['stage'].choices=[choice for choice in editable_stages if choice[0] not in other_managed]
-            self.fields['stage'].help_text='Вперёд по согласованию — только кнопкой «Этап выполнен». Список остаётся доступен для исправления этапа, отказа или переноса в резерв.'
+            allowed={self.instance.stage,*MANUAL_EXIT_STAGES}
+            self.fields['stage'].choices=[choice for choice in editable_stages if choice[0] in allowed]
+            self.fields['stage'].help_text='Вперёд — кнопкой «Этап выполнен», назад — действием «Вернуть этап» с обязательной причиной. Здесь доступны только отказ или перенос в резерв.'
         else:
             managed=set(RECRUITMENT_APPROVAL_FLOW)-{RECRUITMENT_APPROVAL_FLOW[0]}
             self.fields['stage'].choices=[choice for choice in editable_stages if choice[0] not in managed]
@@ -193,6 +198,12 @@ class TalentPoolForm(forms.ModelForm):
         self.fields['manager_approved_on'].label='Дата согласования Заказчиком'
         self.fields['security_approved'].label='Согласован СЭБ'
         self.fields['security_approved_on'].label='Дата согласования СЭБ'
+        if self.instance.stage in RECRUITMENT_APPROVAL_FLOW:
+            current_index=RECRUITMENT_APPROVAL_FLOW.index(self.instance.stage)
+            for step in RECRUITMENT_APPROVAL_FLOW[:current_index]:
+                for flag,date_field,_ in STEP_CONFIRMATIONS.get(step,()):
+                    if self._original_confirmations.get(flag):
+                        self.fields[flag].disabled=True;self.fields[date_field].disabled=True
         self.fields['base_city'].queryset=BaseCity.objects.filter(company=company).order_by('name','pk')
         self.fields['base_city'].empty_label='Выберите базовый город';self.fields['base_city'].required=False
         specialists=RecruitmentSpecialist.objects.filter(company=company,is_active=True)
@@ -238,13 +249,6 @@ class TalentPoolForm(forms.ModelForm):
         source['position']=instance.position.name if instance.position_id else source.get('position','')
         source['construction_site']=instance.construction_object.name if instance.construction_object_id else source.get('construction_site','')
         source['base_city']=instance.base_city.name if instance.base_city_id else source.get('base_city','')
-        confirmed_stage=stage_from_confirmations(instance)
-        if (instance.stage in RECRUITMENT_APPROVAL_FLOW or
-                confirmed_stage=='READY' and instance.stage not in RECRUITMENT_SYSTEM_STAGES|RECRUITMENT_TERMINAL_STAGES):
-            instance.stage=confirmed_stage
-        if instance.stage=='READY' and all((instance.manager_approved,instance.security_approved,
-                instance.medical_exam_passed,instance.pass_documents_sent,instance.pass_ready)):
-            instance.ready_for_arrival=True;instance.ready_for_arrival_on=instance.pass_ready_on
         source['readiness']=instance.ready_for_arrival_on.isoformat() if instance.ready_for_arrival else source.get('readiness','')
         source['manager_approval']=instance.manager_approved_on.isoformat() if instance.manager_approved else source.get('manager_approval','')
         source['security_approval']=instance.security_approved_on.isoformat() if instance.security_approved else source.get('security_approval','')
@@ -260,13 +264,16 @@ class TalentPoolForm(forms.ModelForm):
         return instance
     def clean(self):
         data=super().clean()
+        requested_stage=data.get('stage')
+        if requested_stage and requested_stage!=self._original_stage and not allowed_manual_stage(self._original_stage,requested_stage):
+            self.add_error('stage','Для возврата по маршруту используйте отдельное действие «Вернуть этап» и укажите причину.')
         new_city=' '.join((data.get('new_base_city') or '').split());selected_city=data.get('base_city')
         if new_city and selected_city:self.add_error('new_base_city','Выберите город из списка или добавьте новый, но не оба варианта.')
         data['new_base_city']=new_city
-        pairs=(('ready_for_arrival','ready_for_arrival_on'),('manager_approved','manager_approved_on'),
-            ('security_approved','security_approved_on'),('medical_exam_passed','medical_exam_on'),
-            ('pass_documents_sent','pass_documents_sent_on'),('pass_ready','pass_ready_on'))
-        for flag,date_field in pairs:
+        for flag,date_field in self.confirmation_pairs:
+            if self._original_confirmations.get(flag):
+                data[flag]=True
+                data[date_field]=data.get(date_field) or self._original_confirmations.get(date_field)
             if data.get(flag) and not data.get(date_field):self.add_error(date_field,'Укажите дату подтверждения.')
             if data.get(date_field) and not data.get(flag):self.add_error(flag,'Установите флажок для указанной даты.')
         if data.get('pass_ready') and not data.get('pass_documents_sent'):
