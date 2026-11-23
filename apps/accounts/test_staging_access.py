@@ -67,10 +67,15 @@ class StagingAccessTests(TestCase):
 
     def test_real_updates_integrations_registration_and_training_are_blocked(self):
         guard = StagingGuard(lambda request: HttpResponse())
-        for name in ['one_c', 'one_c_jobs', 'one_c_report', 'invitation_settings', 'user_invite', 'register', 'training_enter', 'training_consume']:
+        for name in ['one_c', 'one_c_jobs', 'one_c_report', 'user_invite', 'register', 'training_enter', 'training_consume']:
             request = SimpleNamespace(resolver_match=SimpleNamespace(namespaces=['accounts'], namespace='accounts', url_name=name))
             request.GET={}
             self.assertEqual(guard.process_view(request, None, (), {}).status_code, 403)
+        settings_request=SimpleNamespace(resolver_match=SimpleNamespace(namespaces=['accounts'],namespace='accounts',
+            url_name='invitation_settings'),GET={})
+        settings_response=guard.process_view(settings_request,None,(),{})
+        self.assertEqual(settings_response.status_code,302)
+        self.assertEqual(settings_response.url,reverse('accounts:approval_mail_settings'))
         for name in ['portal_updates', 'portal_update_status', 'impersonation_start', 'impersonation_stop', 'login', 'logout', 'settings', 'approval_mail_settings']:
             request = SimpleNamespace(resolver_match=SimpleNamespace(namespaces=['accounts'], namespace='accounts', url_name=name))
             request.GET={}

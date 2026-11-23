@@ -172,6 +172,17 @@ class InvitationTests(TestCase):
         self.client.post(reverse('accounts:invitation_settings'),dict(host='smtp.example.org',port=587,security='STARTTLS',username='',from_email='sender@example.org',portal_url='http://192.168.70.9:8001/',action='test'))
         connection.return_value.open.assert_called_once();connection.return_value.close.assert_called_once()
         self.assertFalse(getattr(mail,'outbox',[]));self.assertFalse(InvitationBatch.objects.exists())
+    @override_settings(APPROVAL_EMAIL_FORCE_SMTP=True)
+    @patch('apps.accounts.invitation_mail.connection')
+    def test_approval_mail_settings_check_forces_real_smtp_transport(self,connection):
+        url=reverse('accounts:approval_mail_settings')
+        response=self.client.post(url,dict(host='smtp.example.org',port=587,security='STARTTLS',username='',
+            from_email='sender@example.org',portal_url='http://192.168.70.9:8002/',action='test'))
+        self.assertRedirects(response,url)
+        self.assertTrue(connection.call_args.kwargs['force_smtp'])
+        connection.return_value.open.assert_called_once();connection.return_value.close.assert_called_once()
+        self.assertContains(self.client.get(url),'Исходящая почта согласований')
+        self.assertFalse(getattr(mail,'outbox',[]));self.assertFalse(InvitationBatch.objects.exists())
     def test_settings_validate_host_port_and_portal_url(self):
         for change in [dict(host='https://smtp.example.org'),dict(port=70000),dict(portal_url='http://user:secret@example.org/')]:
             payload=dict(host='smtp.example.org',port=465,security='SSL',username='',from_email='sender@example.org',portal_url='http://192.168.70.9:8001/');payload.update(change)

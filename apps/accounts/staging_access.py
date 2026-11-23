@@ -6,6 +6,7 @@ from django.contrib.auth.backends import ModelBackend
 from django.contrib.auth.hashers import check_password, make_password
 from django.db import transaction, IntegrityError
 from django.http import HttpResponse
+from django.shortcuts import redirect
 from django.views.decorators.debug import sensitive_variables
 from .models import User, Company, Role
 from core.permissions import role_code
@@ -100,6 +101,12 @@ class StagingGuard:
 
     def process_view(self, request, view, args, kwargs):
         match = request.resolver_match
+        # The ordinary invitation settings entry remains useful as a familiar
+        # navigation path for administrators.  In acceptance it must lead to
+        # the isolated approval-mail settings instead of the blanket external
+        # exchange warning.  Invitations themselves remain blocked.
+        if match.namespace == 'accounts' and match.url_name == 'invitation_settings':
+            return redirect('accounts:approval_mail_settings')
         # Acceptance may inspect the read-only UAT source. The shared report
         # endpoint is allowed only for an explicitly selected UAT structure.
         if match.namespace == 'accounts' and match.url_name == 'one_c_report' and request.GET.get('uat') == '1':

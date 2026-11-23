@@ -80,9 +80,8 @@ def history(request):
 @require_http_methods(['GET','POST'])
 def settings_view(request):
     admin(request)
-    redirect_name = ('accounts:approval_mail_settings'
-                     if request.resolver_match.url_name == 'approval_mail_settings'
-                     else 'accounts:invitation_settings')
+    approval_only = request.resolver_match.url_name == 'approval_mail_settings'
+    redirect_name = 'accounts:approval_mail_settings' if approval_only else 'accounts:invitation_settings'
     row=CompanyMailSettings.objects.filter(company=request.user.company).first()
     if row is None:
         security='SSL' if settings.EMAIL_USE_SSL else 'STARTTLS' if settings.EMAIL_USE_TLS else 'NONE'
@@ -103,7 +102,9 @@ def settings_view(request):
             if error:messages.error(request,error)
             else:
                 conn=None
-                try:conn=invitation_mail.connection(cfg);conn.open();messages.success(request,'Подключение к SMTP и авторизация успешны. Письма при проверке не отправлялись.')
+                try:
+                    conn=invitation_mail.connection(cfg,force_smtp=approval_only and getattr(settings,'APPROVAL_EMAIL_FORCE_SMTP',False))
+                    conn.open();messages.success(request,'Подключение к SMTP и авторизация успешны. Письма при проверке не отправлялись.')
                 except Exception as exc:messages.error(request,invitations.safe_mail_error(exc))
                 finally:
                     if conn:
@@ -114,4 +115,5 @@ def settings_view(request):
             retry_failed(request.user.company)
             messages.success(request,'Настройки исходящей почты сохранены.')
         return redirect(redirect_name)
-    return render(request,'accounts/invitation_settings.html',{'form':form,'password_saved':bool(row.password_encrypted)})
+    return render(request,'accounts/invitation_settings.html',{'form':form,'password_saved':bool(row.password_encrypted),
+        'approval_only':approval_only})
