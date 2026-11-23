@@ -129,7 +129,7 @@ class User(AbstractUser):
 
 
 class ApprovalAssignment(BaseTimestampedModel):
-    """The single portal user responsible for one company approval stage."""
+    """The portal user responsible for an approval stage in an optional scope."""
     PROCESS_CHOICES = [
         ('MOVEMENT', 'Заявки на заезд и выезд'),
         ('GPR', 'ГПР'),
@@ -138,15 +138,25 @@ class ApprovalAssignment(BaseTimestampedModel):
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='approval_assignments')
     process = models.CharField('Процесс', max_length=20, choices=PROCESS_CHOICES)
     stage_code = models.CharField('Код этапа', max_length=50)
+    construction_object = models.ForeignKey('projects.ConstructionObject', null=True, blank=True,
+        on_delete=models.PROTECT, related_name='approval_assignments', verbose_name='Строительный объект')
+    camp = models.ForeignKey('personnel.Camp', null=True, blank=True, on_delete=models.PROTECT,
+        related_name='approval_assignments', verbose_name='Местонахождение')
     user = models.ForeignKey(User, on_delete=models.PROTECT, related_name='approval_assignments', verbose_name='Согласующий')
     changed_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
 
     class Meta:
-        ordering = ['process', 'stage_code']
-        constraints = [models.UniqueConstraint(fields=['company', 'process', 'stage_code'], name='unique_company_approval_assignment')]
+        ordering = ['process', 'stage_code', 'construction_object_id', 'camp_id']
+        constraints = [
+            models.UniqueConstraint(fields=['company','process','stage_code'], condition=models.Q(construction_object__isnull=True,camp__isnull=True), name='unique_global_approval_assignment'),
+            models.UniqueConstraint(fields=['company','process','stage_code','construction_object'], condition=models.Q(construction_object__isnull=False,camp__isnull=True), name='unique_object_approval_assignment'),
+            models.UniqueConstraint(fields=['company','process','stage_code','camp'], condition=models.Q(construction_object__isnull=True,camp__isnull=False), name='unique_camp_approval_assignment'),
+            models.UniqueConstraint(fields=['company','process','stage_code','construction_object','camp'], condition=models.Q(construction_object__isnull=False,camp__isnull=False), name='unique_object_camp_approval_assignment'),
+        ]
 
     def __str__(self):
-        return f'{self.get_process_display()} · {self.stage_code}: {self.user}'
+        scope=' · '.join(str(value) for value in (self.construction_object,self.camp) if value) or 'без условий'
+        return f'{self.get_process_display()} · {self.stage_code} · {scope}: {self.user}'
 
 
 class ApprovalAssignmentChange(models.Model):

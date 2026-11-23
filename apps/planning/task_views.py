@@ -130,7 +130,7 @@ class TaskDetail(View):
         movement_rows=[]
         if movement_batch:
             from apps.personnel.models import MovementReviewRequest
-            from apps.personnel.departure_workflow import active_route_roles,route_summary,travel_details_complete
+            from apps.personnel.departure_workflow import active_route_roles,movement_scope,route_summary,travel_details_complete
             from django.template.loader import render_to_string
             movement_rows=MovementReviewRequest.objects.filter(company=request.user.company)
             if task.key.startswith('personnel-movement-batch:'):movement_rows=movement_rows.filter(approval_batch=task.key.split(':',1)[1])
@@ -143,7 +143,7 @@ class TaskDetail(View):
                 row.show_travel_details=row.route_steps[2]['status']!='WAITING'
                 row.needs_travel_details='PEREVAKHTA_SPECIALIST' in active_route_roles(row) and not row.travel_details_complete
                 from apps.accounts.approval_assignments import authorized
-                row.can_route_decide=role_code(request.user)=='ADMIN' or any(authorized(request.user,'MOVEMENT',stage,stage) for stage in active_route_roles(row))
+                row.can_route_decide=role_code(request.user)=='ADMIN' or any(authorized(request.user,'MOVEMENT',stage,stage,**movement_scope(row)) for stage in active_route_roles(row))
                 if row.needs_travel_details:row.can_route_decide=False
                 if row.can_route_decide and row.status=='RETURNED':row.status='PENDING_APPROVAL'
                 row.approval_comment=render_to_string('personnel/_movement_approval_route.html',{'row':row})

@@ -106,10 +106,11 @@ def visible(user):
 
 def is_executor(user,task):
     if task.key.startswith(('personnel-movement-batch:','personnel-movement-approval:')):
-        from apps.personnel.departure_workflow import task_route_roles
+        from apps.personnel.departure_workflow import active_route_roles,movement_scope,task_route_rows
         if role_code(user)=='ADMIN':return True
         from apps.accounts.approval_assignments import authorized
-        return any(authorized(user,'MOVEMENT',stage,stage) for stage in task_route_roles(task))
+        return any(authorized(user,'MOVEMENT',stage,stage,**movement_scope(row))
+            for row in task_route_rows(task) for stage in active_route_roles(row))
     return task.assigned_to_id==user.pk or (not task.assigned_to_id and task.target_role==role_code(user)) or role_code(user)=='ADMIN'
 
 
@@ -156,7 +157,7 @@ def sync_version(version):
     else:
         for section,label,role,_ in DEPARTMENTS:
             from apps.accounts.approval_assignments import assignee
-            owner=assignee(version.company,'GPR',section,role)
+            owner=assignee(version.company,'GPR',section,role,construction_object=version.construction_object)
             task=ensure(version.company,f'approval:{review.pk}:{section}',kind='APPROVAL',title=f'Согласовать план: {label}',target_role=role,assigned_to=owner,created_by=review.submitted_by,version=version,review=review,construction_object_id=version.construction_object_id,due_date=timezone.localdate()+timedelta(days=2),description=f'Раунд {review.number}. Раздел: {label}.')
             if task.status=='OPEN' and task.assigned_to_id!=(owner.pk if owner else None):
                 task.assigned_to=owner;task.save(update_fields=['assigned_to']);event(task,None,'Переназначено','Изменился согласующий этапа.')
@@ -178,7 +179,7 @@ def sync_version(version):
         for old in WorkTask.objects.filter(review=review,target_role='CEO',kind='APPROVAL',status__in=ACTIVE):state(old,'SUPERSEDED',text='Требуются согласования всех служб, включая Службу СБО.')
     if ready(review):
         from apps.accounts.approval_assignments import assignee
-        owner=assignee(version.company,'GPR','CEO','CEO')
+        owner=assignee(version.company,'GPR','CEO','CEO',construction_object=version.construction_object)
         task=ensure(version.company,f'approval:{review.pk}:CEO',kind='APPROVAL',title='Утвердить план',target_role='CEO',assigned_to=owner,created_by=review.submitted_by,version=version,review=review,construction_object_id=version.construction_object_id,due_date=timezone.localdate()+timedelta(days=2))
         if task.status=='OPEN' and task.assigned_to_id!=(owner.pk if owner else None):
             task.assigned_to=owner;task.save(update_fields=['assigned_to']);event(task,None,'Переназначено','Изменился согласующий этапа.')

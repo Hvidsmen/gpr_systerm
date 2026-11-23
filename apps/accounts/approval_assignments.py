@@ -39,15 +39,43 @@ def stage(process, stage_code):
     except KeyError:raise ValidationError('Неизвестный этап согласования.')
 
 
-def assignment(company, process, stage_code):
-    return ApprovalAssignment.objects.select_related('user__role').filter(
-        company=company, process=process, stage_code=stage_code).first()
+def _object_path(company, construction_object):
+    """Return the selected object followed by its parents, most specific first."""
+    if not construction_object:return []
+    from apps.projects.models import ConstructionObject
+    current=(construction_object if hasattr(construction_object,'parent_id') else
+        ConstructionObject.objects.filter(company=company,pk=construction_object).select_related('parent').first())
+    result=[];seen=set()
+    while current and current.pk not in seen:
+        seen.add(current.pk);result.append(current.pk)
+        current=(current.parent if hasattr(current,'parent') else
+            ConstructionObject.objects.filter(company=company,pk=current.parent_id).select_related('parent').first()) if current.parent_id else None
+    return result
 
 
-def assignee(company, process, stage_code, expected_role=None):
+def assignment(company, process, stage_code, *, construction_object=None, camp=None):
+    """Resolve the most specific rule that matches the approval context."""
+    object_path=_object_path(company,construction_object);camp_id=getattr(camp,'pk',camp)
+    rows=list(ApprovalAssignment.objects.select_related('user__role','construction_object','camp').filter(
+        company=company,process=process,stage_code=stage_code))
+    ranked=[]
+    for row in rows:
+        if row.construction_object_id and row.construction_object_id not in object_path:continue
+        if row.camp_id and row.camp_id!=camp_id:continue
+        if row.camp_id and not camp_id:continue
+        if row.construction_object_id:
+            object_rank=len(object_path)-object_path.index(row.construction_object_id)
+            base=300 if row.camp_id else 200
+        else:
+            object_rank=0;base=100 if row.camp_id else 0
+        ranked.append((base+object_rank,-row.pk,row))
+    return max(ranked,default=(0,0,None))[2]
+
+
+def assignee(company, process, stage_code, expected_role=None, *, construction_object=None, camp=None):
     """Explicit owner first; a single role holder is the backwards-compatible fallback."""
     expected_role=expected_role or stage(process,stage_code)[1]
-    row=assignment(company,process,stage_code)
+    row=assignment(company,process,stage_code,construction_object=construction_object,camp=camp)
     if row:
         valid=row.user.is_active and row.user.company_id==company.pk and row.user.archived_at is None and role_code(row.user) in {expected_role,'ADMIN'}
         return row.user if valid else None
@@ -55,22 +83,27 @@ def assignee(company, process, stage_code, expected_role=None):
     return people[0] if len(people)==1 else None
 
 
-def authorized(user, process, stage_code, expected_role=None):
+def authorized(user, process, stage_code, expected_role=None, *, construction_object=None, camp=None):
     if role_code(user)=='ADMIN':return True
     expected_role=expected_role or stage(process,stage_code)[1]
-    row=assignment(user.company,process,stage_code)
+    row=assignment(user.company,process,stage_code,construction_object=construction_object,camp=camp)
     if row:return row.user_id==user.pk and row.user.is_active and role_code(user)==expected_role
     return role_code(user)==expected_role
 
 
 @transaction.atomic
-def replace(*, company, process, stage_code, user, actor, reason=''):
+def replace(*, company, process, stage_code, user, actor, reason='', construction_object=None, camp=None):
     label,expected_role=stage(process,stage_code)
+    if camp and process!='MOVEMENT':
+        raise ValidationError('Условие по местонахождению применяется только к заявкам на заезд и выезд.')
     if user.company_id!=company.pk or not user.is_active or user.archived_at is not None:
         raise ValidationError('Выберите активного пользователя своей компании.')
     if role_code(user) not in {expected_role,'ADMIN'}:
         raise ValidationError(f'Для этапа «{label}» нужен пользователь с ролью «{expected_role}» или администратор.')
-    current=ApprovalAssignment.objects.select_for_update().filter(company=company,process=process,stage_code=stage_code).first()
+    if construction_object and construction_object.company_id!=company.pk:raise ValidationError('Строительный объект другой компании.')
+    if camp and camp.company_id!=company.pk:raise ValidationError('Местонахождение другой компании.')
+    current=ApprovalAssignment.objects.select_for_update().filter(company=company,process=process,stage_code=stage_code,
+        construction_object=construction_object,camp=camp).first()
     previous=current.user if current else None
     if previous and previous.pk==user.pk:return current
     reason=reason.strip()
@@ -78,7 +111,8 @@ def replace(*, company, process, stage_code, user, actor, reason=''):
     if current:
         current.user=user;current.changed_by=actor;current.save(update_fields=['user','changed_by','updated_at'])
     else:
-        current=ApprovalAssignment.objects.create(company=company,process=process,stage_code=stage_code,user=user,changed_by=actor)
+        current=ApprovalAssignment.objects.create(company=company,process=process,stage_code=stage_code,
+            construction_object=construction_object,camp=camp,user=user,changed_by=actor)
     ApprovalAssignmentChange.objects.create(assignment=current,previous_user=previous,new_user=user,changed_by=actor,reason=reason)
     return current
 

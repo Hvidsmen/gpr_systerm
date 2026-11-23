@@ -75,8 +75,10 @@ class ApprovalWorkflowTests(TestCase):
         from .task_services import sync_version
         second=User.objects.create_user(username='configured-hr-approver',company=self.company,
             role=Role.objects.get(code='HR_HEAD'))
-        replace(company=self.company,process='GPR',stage_code='HR',user=second,actor=self.admin)
-        version=self.submit();sync_version(version)
+        version=self.submit()
+        replace(company=self.company,process='GPR',stage_code='HR',user=second,actor=self.admin,
+            construction_object=version.construction_object)
+        sync_version(version)
         task=version.work_tasks.get(key__endswith=':HR')
         self.assertEqual(task.assigned_to,second)
         with self.assertRaises(PermissionDenied):

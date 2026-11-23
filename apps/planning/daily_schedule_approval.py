@@ -84,7 +84,7 @@ def sync(schedule):
     if REQUIRED_SECTIONS<=decisions.keys():roles.append(('CEO','Утверждение СМГ','CEO'))
     for section,label,role in roles:
         from apps.accounts.approval_assignments import assignee
-        owner=assignee(schedule.company,'SMG',section,role)
+        owner=assignee(schedule.company,'SMG',section,role,construction_object=schedule.construction_object)
         task=ensure(schedule.company,f'smg-approval:{review.pk}:{section}',kind='APPROVAL',title=f'Согласовать дневной СМГ: {label}',assigned_to=owner,target_role=role,created_by=review.submitted_by,schedule=schedule,schedule_review=review,construction_object_id=schedule.construction_object_id,due_date=timezone.localdate()+timedelta(days=2))
         if task.status=='SUPERSEDED' and section not in decisions:state(task,'OPEN')
         if task.status=='OPEN' and task.assigned_to_id!=(owner.pk if owner else None):
@@ -121,7 +121,7 @@ def transition(user,schedule,action,comment=''):
         if role!='ADMIN' and section in {s for s,_,_ in SECTIONS}|{'CEO'}:
             from apps.accounts.approval_assignments import authorized
             expected=dict((s,r) for s,_,r in SECTIONS).get(section,'CEO')
-            if not authorized(user,'SMG',section,expected):raise PermissionDenied('На этом этапе назначен другой согласующий.')
+            if not authorized(user,'SMG',section,expected,construction_object=schedule.construction_object):raise PermissionDenied('На этом этапе назначен другой согласующий.')
         if schedule.status!='SUBMITTED' or not review:raise ValidationError('СМГ не находится на согласовании.')
         approved=set(review.decisions.filter(action='APPROVE').values_list('section',flat=True))
         if role=='CEO' and not REQUIRED_SECTIONS<=approved:raise ValidationError('Дождитесь согласования всех служб, включая Службу СБО.')

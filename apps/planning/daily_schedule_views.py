@@ -85,9 +85,9 @@ class DailyScheduleDetail(View):
         checked=check_valid(schedule,latest)
         role=role_code(request.user)
         from apps.accounts.approval_assignments import authorized
-        actions=[{'label':label,'action':SECTION_ACTIONS[section],'done':section in approved,'allowed':schedule.status=='SUBMITTED' and authorized(request.user,'SMG',section,assigned) and section not in approved} for section,label,assigned in SECTIONS if not (section in {'SECURITY','SBO'} and schedule.status in {'APPROVED','APPLIED','ARCHIVED'} and section not in approved)]
-        can_return_stage=any(authorized(request.user,'SMG',section,assigned) for section,_,assigned in SECTIONS)
-        approval={'smg_requires_approval':requires_approval(schedule),'smg_review':review,'smg_decisions':decisions,'smg_actions':actions,'smg_checked':checked,'smg_final_allowed':schedule.status=='SUBMITTED' and ready and authorized(request.user,'SMG','CEO','CEO'),'smg_return_allowed':schedule.status=='SUBMITTED' and (role=='ADMIN' or can_return_stage or ready and authorized(request.user,'SMG','CEO','CEO'))}
+        actions=[{'label':label,'action':SECTION_ACTIONS[section],'done':section in approved,'allowed':schedule.status=='SUBMITTED' and authorized(request.user,'SMG',section,assigned,construction_object=schedule.construction_object) and section not in approved} for section,label,assigned in SECTIONS if not (section in {'SECURITY','SBO'} and schedule.status in {'APPROVED','APPLIED','ARCHIVED'} and section not in approved)]
+        can_return_stage=any(authorized(request.user,'SMG',section,assigned,construction_object=schedule.construction_object) for section,_,assigned in SECTIONS)
+        approval={'smg_requires_approval':requires_approval(schedule),'smg_review':review,'smg_decisions':decisions,'smg_actions':actions,'smg_checked':checked,'smg_final_allowed':schedule.status=='SUBMITTED' and ready and authorized(request.user,'SMG','CEO','CEO',construction_object=schedule.construction_object),'smg_return_allowed':schedule.status=='SUBMITTED' and (role=='ADMIN' or can_return_stage or ready and authorized(request.user,'SMG','CEO','CEO',construction_object=schedule.construction_object))}
         from .daily_schedule_table_forms import AddEntryForm
         from .independent_smg_views import ReferenceForm
         reference_form=ReferenceForm(schedule=schedule,user=request.user) if editable and role_code(request.user) in PLAN_ROLES else None

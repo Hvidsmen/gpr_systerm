@@ -48,13 +48,20 @@ def active_route_roles(row):
     if row.status not in {'PENDING_APPROVAL','RETURNED'}:return set()
     return {code for code,data in route_for(row).items() if data.get('status')=='PENDING'}
 
-def task_route_roles(task):
+def task_route_rows(task):
     if not task.key.startswith(('personnel-movement-batch:','personnel-movement-approval:')):return set()
     if task.key.startswith('personnel-movement-batch:'):
         rows=MovementReviewRequest.objects.filter(company=task.company,approval_batch=task.key.split(':',1)[1])
     else:rows=MovementReviewRequest.objects.filter(company=task.company,pk=task.key.rsplit(':',1)[1])
+    return rows.select_related('construction_object','from_camp','to_camp')
+
+def movement_scope(row):
+    camp=row.to_camp if row.kind in {'ARRIVAL','TRANSFER'} else row.from_camp
+    return {'construction_object':row.construction_object,'camp':camp}
+
+def task_route_roles(task):
     result=set()
-    for row in rows:
+    for row in task_route_rows(task):
         if row.status in {'PENDING_APPROVAL','RETURNED'}:result|=active_route_roles(row)
     return result
 
@@ -123,17 +130,23 @@ def sync_approval_task(row,user=None):
         if approval_rows(row).exclude(status='CANCELLED').exists():state(task,'DONE',user,'Единый маршрут согласования завершён по всем сотрудникам.')
         else:state(task,'SUPERSEDED',user,'Все заявки сотрудников отменены.')
     if pending:
+        pending_rows=list(approval_rows(row).filter(status__in=['PENDING_APPROVAL','RETURNED']).select_related(
+            'construction_object','from_camp','to_camp'))
         roles=set()
-        for item in approval_rows(row).filter(status__in=['PENDING_APPROVAL','RETURNED']):roles|=active_route_roles(item)
+        for item in pending_rows:roles|=active_route_roles(item)
         target=next(iter(roles)) if len(roles)==1 else 'MOVEMENT_PARALLEL'
         from apps.accounts.approval_assignments import assignee
-        owner=assignee(row.company,'MOVEMENT',target,target) if target!='MOVEMENT_PARALLEL' else None
+        stage_owners={}
+        for item in pending_rows:
+            for stage in active_route_roles(item):
+                owner=assignee(row.company,'MOVEMENT',stage,stage,**movement_scope(item))
+                if owner:stage_owners[(stage,owner.pk)]=owner
+        owners={owner.pk:owner for owner in stage_owners.values()}
+        owner=next(iter(owners.values())) if target!='MOVEMENT_PARALLEL' and len(owners)==1 else None
         if task.target_role!=target or task.assigned_to_id!=(owner.pk if owner else None):
             task.target_role=target;task.assigned_to=owner;task.save(update_fields=['target_role','assigned_to','updated_at'])
         from apps.accounts.approval_mail import queue_task
-        for stage in roles:
-            stage_owner=assignee(row.company,'MOVEMENT',stage,stage)
-            if stage_owner:queue_task(task,'MOVEMENT',stage,stage_owner)
+        for (stage,_),stage_owner in stage_owners.items():queue_task(task,'MOVEMENT',stage,stage_owner)
     return task
 
 
@@ -209,9 +222,9 @@ def decide(user,row,approved,comment='',sync_task=True,step=None):
     from apps.accounts.approval_assignments import authorized
     if step is not None:
         if step not in pending:raise PermissionDenied('Этот этап уже завершён или ещё не начался.')
-        if actor_role!='ADMIN' and not authorized(user,'MOVEMENT',step,step):raise PermissionDenied('На этом этапе назначен другой согласующий.')
+        if actor_role!='ADMIN' and not authorized(user,'MOVEMENT',step,step,**movement_scope(row)):raise PermissionDenied('На этом этапе назначен другой согласующий.')
     elif actor_role!='ADMIN':
-        step=next((code for code,_ in ROUTE if code in pending and authorized(user,'MOVEMENT',code,code)),None)
+        step=next((code for code,_ in ROUTE if code in pending and authorized(user,'MOVEMENT',code,code,**movement_scope(row))),None)
         if not step:raise PermissionDenied('Сейчас решение ожидается от другого участника маршрута.')
     if row.status not in {'PENDING_APPROVAL','RETURNED'}:raise ValidationError('Заявка уже обработана или находится на другом этапе.')
     if not approved and not comment.strip():raise ValidationError('При несогласовании укажите причину.')

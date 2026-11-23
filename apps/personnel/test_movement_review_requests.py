@@ -95,9 +95,10 @@ class MovementReviewRequestTests(TestCase):
         from .departure_workflow import decide
         first=User.objects.create_user(username='configured-manager-old',company=self.company,role=Role.objects.get(code='MANAGER'))
         selected=User.objects.create_user(username='configured-manager-new',company=self.company,role=Role.objects.get(code='MANAGER'))
-        replace(company=self.company,process='MOVEMENT',stage_code='MANAGER',user=selected,actor=self.admin)
+        replace(company=self.company,process='MOVEMENT',stage_code='MANAGER',user=selected,actor=self.admin,
+            construction_object=self.obj,camp=self.camp)
         housing.request_moves(self.personnel,'ARRIVAL',self.camp,timezone.localdate(),[self.person])
-        row=MovementReviewRequest.objects.get()
+        row=MovementReviewRequest.objects.get();row.construction_object=self.obj;row.save(update_fields=['construction_object','updated_at'])
         with self.assertRaises(PermissionDenied):decide(first,row,True,'Старый ответственный')
         decide(selected,row,True,'Назначенный ответственный');row.refresh_from_db()
         self.assertEqual(row.approval_route['MANAGER']['status'],'APPROVED')

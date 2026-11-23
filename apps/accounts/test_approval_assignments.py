@@ -4,7 +4,9 @@ from django.test import TestCase,override_settings
 from django.urls import reverse
 
 from apps.planning.models import WorkTask
-from .approval_assignments import authorized,replace
+from apps.personnel.models import Camp
+from apps.projects.models import ConstructionObject,Project
+from .approval_assignments import assignee,authorized,replace
 from .approval_mail import send_notice
 from .invitation_models import CompanyMailSettings
 from .models import ApprovalAssignment,ApprovalAssignmentChange,ApprovalNotice,ApprovalObserver,Company,Role,User
@@ -19,6 +21,17 @@ class ApprovalAssignmentTests(TestCase):
             role=Role.objects.get(code='HR_HEAD'),email='first@example.org')
         self.second=User.objects.create_user(username='approval-hr-second',company=self.company,
             role=Role.objects.get(code='HR_HEAD'),email='second@example.org')
+        self.third=User.objects.create_user(username='approval-hr-third',company=self.company,
+            role=Role.objects.get(code='HR_HEAD'),email='third@example.org')
+        manager_role=Role.objects.get(code='MANAGER')
+        self.manager_first=User.objects.create_user(username='approval-manager-first',company=self.company,role=manager_role)
+        self.manager_second=User.objects.create_user(username='approval-manager-second',company=self.company,role=manager_role)
+        self.manager_third=User.objects.create_user(username='approval-manager-third',company=self.company,role=manager_role)
+        self.project=Project.objects.create(company=self.company,name='Проект условий')
+        self.parent=ConstructionObject.objects.create(company=self.company,project=self.project,name='Объект')
+        self.child=ConstructionObject.objects.create(company=self.company,project=self.project,parent=self.parent,name='Участок')
+        self.other=ConstructionObject.objects.create(company=self.company,project=self.project,name='Другой объект')
+        self.camp=Camp.objects.create(company=self.company,name='ВЖГ условий')
 
     def test_single_owner_and_audited_manual_replacement(self):
         row=replace(company=self.company,process='GPR',stage_code='HR',user=self.first,actor=self.admin)
@@ -39,6 +52,32 @@ class ApprovalAssignmentTests(TestCase):
         response=self.client.post(url,{'process':'GPR','stage_code':'HR','user':self.second.pk})
         self.assertContains(response,'При замене согласующего укажите причину.')
         self.assertEqual(ApprovalAssignment.objects.get(process='GPR',stage_code='HR').user,self.first)
+
+    def test_scope_conditions_resolve_from_most_specific_to_global(self):
+        replace(company=self.company,process='MOVEMENT',stage_code='MANAGER',user=self.manager_first,actor=self.admin)
+        replace(company=self.company,process='MOVEMENT',stage_code='MANAGER',user=self.manager_second,actor=self.admin,
+            construction_object=self.parent)
+        replace(company=self.company,process='MOVEMENT',stage_code='MANAGER',user=self.manager_third,actor=self.admin,camp=self.camp)
+        replace(company=self.company,process='MOVEMENT',stage_code='MANAGER',user=self.manager_first,actor=self.admin,
+            construction_object=self.parent,camp=self.camp)
+        self.assertEqual(assignee(self.company,'MOVEMENT','MANAGER','MANAGER'),self.manager_first)
+        self.assertEqual(assignee(self.company,'MOVEMENT','MANAGER','MANAGER',construction_object=self.child),self.manager_second)
+        self.assertEqual(assignee(self.company,'MOVEMENT','MANAGER','MANAGER',construction_object=self.other,camp=self.camp),self.manager_third)
+        self.assertEqual(assignee(self.company,'MOVEMENT','MANAGER','MANAGER',construction_object=self.child,camp=self.camp),self.manager_first)
+        self.assertTrue(authorized(self.manager_first,'MOVEMENT','MANAGER','MANAGER',construction_object=self.child,camp=self.camp))
+        self.assertFalse(authorized(self.manager_second,'MOVEMENT','MANAGER','MANAGER',construction_object=self.child,camp=self.camp))
+
+    def test_admin_page_saves_object_and_location_condition(self):
+        self.client.force_login(self.admin);url=reverse('accounts:approval_settings')
+        response=self.client.post(url,{'process':'MOVEMENT','stage_code':'MANAGER','user':self.admin.pk,
+            'construction_object':self.parent.pk,'camp':self.camp.pk})
+        self.assertRedirects(response,url)
+        row=ApprovalAssignment.objects.get(process='MOVEMENT',stage_code='MANAGER')
+        self.assertEqual(row.construction_object,self.parent);self.assertEqual(row.camp,self.camp)
+        page=self.client.get(url)
+        self.assertContains(page,'Приоритет условий')
+        self.assertContains(page,'Все строительные объекты')
+        self.assertContains(page,'Все местонахождения')
 
     def test_admin_can_add_and_remove_company_wide_observer(self):
         self.client.force_login(self.admin);url=reverse('accounts:approval_settings')
