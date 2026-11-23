@@ -280,7 +280,7 @@ def decide(user,row,approved,comment='',sync_task=True,step=None):
 
 
 @transaction.atomic
-def decide_many(user,task,ids,approved,comment='',all_pending=False):
+def decide_many(user,task,ids,approved,comment='',all_pending=False,comments=None):
     if role_code(user)!='ADMIN' and role_code(user) not in task_route_roles(task):raise PermissionDenied('Сейчас решение ожидается от другой роли.')
     query=MovementReviewRequest.objects.select_for_update().filter(company=user.company,status__in=['PENDING_APPROVAL','RETURNED'])
     if task.key.startswith('personnel-movement-batch:'):
@@ -294,10 +294,20 @@ def decide_many(user,task,ids,approved,comment='',all_pending=False):
         query=query.filter(pk__in=selected)
     rows=[row for row in query.order_by('pk') if role_code(user)=='ADMIN' or role_code(user) in active_route_roles(row)]
     if not rows:raise ValidationError('Выбранные заявки уже обработаны или недоступны.')
-    if not approved and not comment.strip():raise ValidationError('При несогласовании укажите причину.')
-    for row in rows:decide(user,row,approved,comment,sync_task=False)
+    row_comments={}
+    if not approved:
+        if comments is None:
+            if not comment.strip():raise ValidationError('При несогласовании укажите причину.')
+            row_comments={row.pk:comment.strip() for row in rows}
+        else:
+            row_comments={row.pk:str(comments.get(str(row.pk),'')).strip() for row in rows}
+            missing=[row.person.display_name for row in rows if not row_comments[row.pk]]
+            if missing:raise ValidationError('Укажите отдельную причину несогласования для: '+', '.join(missing)+'.')
+    for row in rows:decide(user,row,approved,row_comments.get(row.pk,''),sync_task=False)
     sync_approval_task(rows[0],user)
-    task_event(task,user,('Согласовано' if approved else 'Не согласовано')+f' сотрудников: {len(rows)}',comment)
+    event_comment=comment.strip() if approved or comments is None else '; '.join(
+        f'{row.person.display_name}: {row_comments[row.pk]}' for row in rows)
+    task_event(task,user,('Согласовано' if approved else 'Не согласовано')+f' сотрудников: {len(rows)}',event_comment[:8000])
     return len(rows)
 
 

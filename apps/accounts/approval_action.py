@@ -14,27 +14,44 @@ from .models import ApprovalNotice,User
 logger=logging.getLogger(__name__)
 
 
+def movement_rows_for_notice(notice,task,selected=None,lock=False):
+    from apps.personnel.departure_workflow import active_route_roles,movement_scope
+    rows=approval_rows_for_task(task)
+    if lock:rows=rows.select_for_update()
+    rows=list(rows.select_related('person').order_by('pk'))
+    rows=[row for row in rows if notice.stage_code in active_route_roles(row) and
+        authorized(notice.intended_user,'MOVEMENT',notice.stage_code,notice.stage_code,**movement_scope(row))]
+    if selected is not None:
+        selected_ids={int(value) for value in selected if str(value).isdigit()}
+        if not selected_ids:raise ValidationError('Выберите хотя бы одного сотрудника.')
+        rows=[row for row in rows if row.pk in selected_ids]
+    return rows
+
+
 @transaction.atomic
-def execute(notice,task,actor,decision,comment,selected=None):
+def execute(notice,task,actor,decision,comment,selected=None,comments=None):
     intended=notice.intended_user
     if task.status!='OPEN':raise ValidationError('Это согласование уже завершено или заменено.')
     if notice.process=='MOVEMENT' and notice.stage_code=='PEREVAKHTA_SPECIALIST':
         raise ValidationError('Специалист перевахты должен проверить заявки и принять решение в портале. Согласование из письма недоступно.')
     approved=decision=='approve'
     if decision not in {'approve','reject'}:raise ValidationError('Выберите решение.')
-    if not approved and not comment.strip():raise ValidationError('При несогласовании комментарий обязателен.')
     if notice.process=='MOVEMENT':
-        from apps.personnel.departure_workflow import active_route_roles,decide,movement_scope,sync_approval_task
-        rows=list(approval_rows_for_task(task).select_for_update().order_by('pk'))
-        rows=[row for row in rows if notice.stage_code in active_route_roles(row) and
-            authorized(intended,'MOVEMENT',notice.stage_code,notice.stage_code,**movement_scope(row))]
-        if selected is not None:
-            selected_ids={int(value) for value in selected if str(value).isdigit()}
-            if not selected_ids:raise ValidationError('Выберите хотя бы одного сотрудника.')
-            rows=[row for row in rows if row.pk in selected_ids]
+        from apps.personnel.departure_workflow import decide,sync_approval_task
+        rows=movement_rows_for_notice(notice,task,selected,lock=True)
         if not rows:raise ValidationError('Этот этап уже завершён или ещё не начался.')
-        for row in rows:decide(actor,row,approved,comment,sync_task=False,step=notice.stage_code)
+        row_comments={}
+        if not approved:
+            if comments is None:
+                if not comment.strip():raise ValidationError('При несогласовании комментарий обязателен.')
+                row_comments={row.pk:comment.strip() for row in rows}
+            else:
+                row_comments={row.pk:str(comments.get(str(row.pk),'')).strip() for row in rows}
+                missing=[row.person.display_name for row in rows if not row_comments[row.pk]]
+                if missing:raise ValidationError('Укажите отдельную причину несогласования для: '+', '.join(missing)+'.')
+        for row in rows:decide(actor,row,approved,row_comments.get(row.pk,''),sync_task=False,step=notice.stage_code)
         sync_approval_task(rows[0],actor);return
+    if not approved and not comment.strip():raise ValidationError('При несогласовании комментарий обязателен.')
     if not authorized(intended,notice.process,notice.stage_code,task.target_role):
         raise ValidationError('Согласующий этапа был заменён. Используйте новое письмо.')
     from core.plan_approval import SECTION_ACTIONS
@@ -84,15 +101,20 @@ def action(request,token):
     error=''
     if request.method=='POST':
         try:
-            execute(notice,task,actor,decision,request.POST.get('comment','')[:4000],selected or None)
+            row_comments={key.removeprefix('comment_'):value[:4000] for key,value in request.POST.items()
+                if key.startswith('comment_')}
+            execute(notice,task,actor,decision,request.POST.get('comment','')[:4000],selected or None,
+                row_comments if notice.process=='MOVEMENT' and decision=='reject' else None)
             return render(request,'accounts/approval_email_action.html',{'success':'Решение сохранено.','task':task,'decision':decision})
         except (ValidationError,PermissionDenied) as exc:error='; '.join(exc.messages) if isinstance(exc,ValidationError) else str(exc)
         except Exception:
             logger.exception('Approval email action failed',extra={'notice_id':notice.pk,'task_id':task.pk})
             error='Не удалось сохранить решение по почтовой ссылке. Откройте согласование в портале.'
-    selected_names=[]
-    if selected and notice.process=='MOVEMENT':
-        selected_names=list(approval_rows_for_task(task).filter(pk__in=[value for value in selected if value.isdigit()]).values_list(
-            'person__full_name',flat=True))
+    decision_rows=[]
+    if notice.process=='MOVEMENT':
+        try:decision_rows=movement_rows_for_notice(notice,task,selected or None)
+        except ValidationError:pass
+    selected_names=[row.person.display_name for row in decision_rows] if selected else []
     return render(request,'accounts/approval_email_action.html',{'notice':notice,'task':task,'decision':decision,
-        'error':error,'selected':selected,'selected_names':selected_names,'portal_review_only':False})
+        'error':error,'selected':selected,'selected_names':selected_names,'decision_rows':decision_rows,
+        'portal_review_only':False})

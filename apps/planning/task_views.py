@@ -211,7 +211,10 @@ class TaskDetail(View):
                 if task.kind!='APPROVAL' or task.status!='OPEN' or not service.is_executor(request.user,task):raise PermissionDenied
                 from apps.personnel.departure_workflow import decide_many
                 approved='approve' in action;all_pending=action.endswith('_all')
-                count=decide_many(request.user,task,request.POST.getlist('selected'),approved,text,all_pending=all_pending)
+                row_comments={key.removeprefix('comment_'):value[:4000] for key,value in request.POST.items()
+                    if key.startswith('comment_')}
+                count=decide_many(request.user,task,request.POST.getlist('selected'),approved,text,
+                    all_pending=all_pending,comments=None if approved else row_comments)
                 messages.success(request,f'Обработано сотрудников: {count}.')
                 return redirect('planning:task_detail',pk=pk)
             else:raise ValidationError('Неизвестное действие.')
