@@ -82,12 +82,75 @@ class AssignmentInitialStateTests(TestCase):
         self.assertContains(self.post('MV',past-timedelta(days=1)),'Начальное состояние уже введено')
         self.assertEqual(CampStay.objects.get(person=slot.person).arrived_on,past)
 
-    def test_initialize_previously_empty_assignment_once_then_hide_fields_on_edit(self):
+    def test_recorded_state_and_dates_are_shown_on_assignment_edit(self):
         response=self.client.post(self.url,self.data)
         self.assertEqual(response.status_code,200);self.assertIn('state',response.context['initial_form'].errors)
-        self.assertEqual(self.post('MO',departure=self.day-timedelta(days=8)).status_code,302)
+        departure=self.day-timedelta(days=8)
+        self.assertEqual(self.post('MO',departure=departure).status_code,302)
         slot=self.assigned();url=reverse('personnel:plan_assignment_edit',args=[slot.pk])
-        self.assertNotContains(self.client.get(url),'data-assignment-initial')
+        page=self.client.get(url)
+        self.assertContains(page,'data-assignment-initial')
+        self.assertEqual(page.context['initial_form']['state'].value(),'MO')
+        self.assertEqual(page.context['initial_form']['departure_date'].value(),departure)
+
+    def test_edit_can_correct_arrival_date_and_keeps_fact_history_linked(self):
+        original=self.day-timedelta(days=20);corrected=self.day-timedelta(days=25)
+        self.assertEqual(self.post('MV',original).status_code,302)
+        slot=self.assigned();stay=CampStay.objects.get(person=slot.person);event=slot.initial_movement
+        response=self.client.post(reverse('personnel:plan_assignment_edit',args=[slot.pk]),{
+            **self.data,'version':slot.updated_at.isoformat(),
+            'initial-state':'MV','initial-arrival_date':str(corrected),'initial-departure_date':'',
+        })
+        self.assertEqual(response.status_code,302)
+        slot.refresh_from_db();stay.refresh_from_db();event.refresh_from_db()
+        self.assertEqual(stay.arrived_on,corrected);self.assertEqual(event.date,corrected)
+        self.assertEqual(slot.initial_movement,event)
+        self.assertEqual((slot.status,slot.arrival_date,slot.departure_date),('МВ',corrected,None))
+        from apps.production.history_models import FactRevision
+        self.assertTrue(FactRevision.objects.filter(actor=self.hr,reason__contains='Исправлен статус назначения').exists())
+
+    def test_edit_can_change_on_shift_to_rest_with_related_dates(self):
+        arrival=self.day-timedelta(days=20);departure=self.day-timedelta(days=5)
+        self.assertEqual(self.post('MV',arrival).status_code,302)
+        slot=self.assigned();stay=CampStay.objects.get(person=slot.person)
+        response=self.client.post(reverse('personnel:plan_assignment_edit',args=[slot.pk]),{
+            **self.data,'version':slot.updated_at.isoformat(),
+            'initial-state':'MO','initial-arrival_date':str(arrival),'initial-departure_date':str(departure),
+        })
+        self.assertEqual(response.status_code,302)
+        slot.refresh_from_db();stay.refresh_from_db()
+        self.assertEqual(stay.departed_on,departure)
+        self.assertEqual(slot.initial_movement.kind,'DEPARTURE')
+        self.assertEqual(slot.initial_movement.date,departure)
+        self.assertEqual((slot.status,slot.arrival_date,slot.departure_date),('МО',arrival,departure))
+
+    def test_edit_can_change_rest_back_to_on_shift_and_cancel_wrong_departure(self):
+        arrival=self.day-timedelta(days=20);departure=self.day-timedelta(days=5)
+        self.assertEqual(self.post('MO',arrival,departure).status_code,302)
+        slot=self.assigned();stay=CampStay.objects.get(person=slot.person);old_departure=slot.initial_movement
+        response=self.client.post(reverse('personnel:plan_assignment_edit',args=[slot.pk]),{
+            **self.data,'version':slot.updated_at.isoformat(),
+            'initial-state':'MV','initial-arrival_date':str(arrival),'initial-departure_date':'',
+        })
+        self.assertEqual(response.status_code,302)
+        slot.refresh_from_db();stay.refresh_from_db();old_departure.refresh_from_db()
+        self.assertIsNone(stay.departed_on)
+        self.assertEqual(old_departure.kind,'CANCEL')
+        self.assertEqual(slot.initial_movement.kind,'ARRIVAL')
+        self.assertEqual((slot.status,slot.arrival_date,slot.departure_date),('МВ',arrival,None))
+
+    def test_edit_refuses_to_rewrite_state_before_a_later_movement(self):
+        departure=self.day-timedelta(days=20)
+        self.assertEqual(self.post('MO',departure=departure).status_code,302)
+        slot=self.assigned()
+        from . import housing
+        housing.move(self.hr,'ARRIVAL',self.a,self.day-timedelta(days=5),[slot.person],comment='Поздний заезд')
+        response=self.client.post(reverse('personnel:plan_assignment_edit',args=[slot.pk]),{
+            **self.data,'version':slot.updated_at.isoformat(),
+            'initial-state':'MO','initial-arrival_date':'','initial-departure_date':str(departure-timedelta(days=1)),
+        })
+        self.assertContains(response,'есть более поздние перемещения')
+        slot.refresh_from_db();self.assertEqual(slot.initial_movement.date,departure)
 
     def test_old_assignment_can_record_later_arrival_from_rest(self):
         assigned_from=self.day-timedelta(days=90)

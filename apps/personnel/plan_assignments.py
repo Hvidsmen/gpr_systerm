@@ -86,17 +86,100 @@ def has_movements(person):
     return person.stays.exists() or person.housing_events.exists()
 
 
-def initialize_state(user,row,data,*,enforce_assignment_start=True):
+def initial_state_values(row):
+    """Values shown when an assignment's recorded state is corrected."""
+    event=row.initial_movement
+    if event:
+        if event.kind in {'ARRIVAL','TRANSFER'}:
+            return {'state':'MV','arrival_date':event.stay.arrived_on if event.stay_id else event.date,'departure_date':None}
+        if event.kind=='DEPARTURE':
+            return {'state':'MO','arrival_date':event.stay.arrived_on if event.stay_id else None,'departure_date':event.date}
+    return {'state':{'МВ':'MV','МО':'MO'}.get(row.status,''),'arrival_date':row.arrival_date,'departure_date':row.departure_date}
+
+
+def _store_slot_state(row,state,arrival,departure,event):
+    row.status='МВ' if state=='MV' else 'МО'
+    row.arrival_date=arrival;row.departure_date=departure if state=='MO' else None
+    row.initial_movement=event
+    row.save(update_fields=['status','arrival_date','departure_date','initial_movement','updated_at'])
+
+
+def _correct_recorded_state(user,row,data):
+    """Correct the latest movement attached to an assignment, preserving audit history."""
+    saved=initial_state_values(row)
+    state,arrival,departure=data['state'],data.get('arrival_date'),data.get('departure_date')
+    if (saved['state'],saved['arrival_date'],saved['departure_date'])==(state,arrival,departure):return False
+    event=HousingEvent.objects.select_for_update().select_related('stay','from_camp','to_camp').get(
+        pk=row.initial_movement_id,company=user.company,person=row.person)
+    latest=HousingEvent.objects.filter(company=user.company,person=row.person,
+        kind__in=['ARRIVAL','DEPARTURE','TRANSFER']).order_by('-date','-pk').first()
+    if latest and latest.pk!=event.pk:
+        raise ValidationError('После зафиксированного статуса есть более поздние перемещения. Исправьте их в истории размещений или в разделе «Заезд / выезд».')
+    old_state='MV' if event.kind in {'ARRIVAL','TRANSFER'} else 'MO'
+    reason=(f'Исправлен статус назначения: {"На вахте" if old_state=="MV" else "МО"} → '
+            f'{"На вахте" if state=="MV" else "МО"}.')
+    with history_actor(user,reason):
+        stay=CampStay.objects.select_for_update().filter(pk=event.stay_id,company=user.company).first() if event.stay_id else None
+        arrival_event=(HousingEvent.objects.select_for_update().filter(company=user.company,person=row.person,
+            stay=stay,kind__in=['ARRIVAL','TRANSFER']).order_by('date','pk').first() if stay else None)
+        if stay and arrival:
+            old_arrival=stay.arrived_on
+            stay.arrived_on=arrival
+            if arrival_event:
+                arrival_event.date=arrival;arrival_event.comment=reason;arrival_event.recorded_by=user
+                arrival_event.save(update_fields=['date','comment','recorded_by','updated_at'])
+                if arrival_event.kind=='TRANSFER' and arrival_event.from_camp_id:
+                    previous=CampStay.objects.select_for_update().filter(company=user.company,person=row.person,
+                        camp_id=arrival_event.from_camp_id,departed_on=old_arrival,cancelled_at=None).exclude(pk=stay.pk).order_by('-pk').first()
+                    if previous:
+                        previous.departed_on=arrival;previous.full_clean();previous.save(update_fields=['departed_on','updated_at'])
+        if state=='MO':
+            if stay is None and arrival:
+                stay=CampStay(company=user.company,person=row.person,camp=event.to_camp or event.from_camp or row.housing_camp,
+                    arrived_on=arrival,departed_on=departure,comment=reason,recorded_by=user)
+                stay.full_clean();stay.save()
+                arrival_event=HousingEvent.objects.create(company=user.company,person=row.person,date=arrival,
+                    kind='ARRIVAL',to_camp=stay.camp,stay=stay,comment=reason,recorded_by=user)
+            elif stay:
+                stay.departed_on=departure;stay.comment=reason;stay.recorded_by=user
+                stay.full_clean();stay.save(update_fields=['arrived_on','departed_on','comment','recorded_by','updated_at'])
+            if old_state=='MO':
+                event.date=departure;event.stay=stay;event.from_camp=stay.camp if stay else event.from_camp or row.housing_camp
+                event.departure_destination='REST';event.comment=reason;event.recorded_by=user
+                event.save(update_fields=['date','stay','from_camp','departure_destination','comment','recorded_by','updated_at'])
+                departure_event=event
+            else:
+                departure_event=HousingEvent.objects.create(company=user.company,person=row.person,date=departure,
+                    kind='DEPARTURE',departure_destination='REST',from_camp=stay.camp,stay=stay,comment=reason,recorded_by=user)
+            _store_slot_state(row,state,arrival,departure,departure_event)
+        else:
+            if stay is None:
+                stay=CampStay(company=user.company,person=row.person,camp=row.housing_camp,arrived_on=arrival,
+                    comment=reason,recorded_by=user)
+                stay.full_clean();stay.save()
+                arrival_event=HousingEvent.objects.create(company=user.company,person=row.person,date=arrival,
+                    kind='ARRIVAL',to_camp=stay.camp,stay=stay,comment=reason,recorded_by=user)
+            else:
+                stay.departed_on=None;stay.comment=reason;stay.recorded_by=user
+                stay.full_clean();stay.save(update_fields=['arrived_on','departed_on','comment','recorded_by','updated_at'])
+                if arrival_event is None:
+                    arrival_event=HousingEvent.objects.create(company=user.company,person=row.person,date=arrival,
+                        kind='ARRIVAL',to_camp=stay.camp,stay=stay,comment=reason,recorded_by=user)
+            if old_state=='MO':
+                event.kind='CANCEL';event.departure_destination='';event.comment=f'{reason} Ошибочная запись выезда отменена.';event.recorded_by=user
+                event.save(update_fields=['kind','departure_destination','comment','recorded_by','updated_at'])
+            _store_slot_state(row,state,arrival,None,arrival_event)
+    return True
+
+
+def initialize_state(user,row,data,*,enforce_assignment_start=True,allow_correction=False):
     """Record the selected actual state without duplicating an existing state."""
     if not data or not data.get('state'):return False
     state,arrival,departure=data['state'],data.get('arrival_date'),data.get('departure_date')
     if row.initial_movement_id:
-        event=row.initial_movement
-        saved_arrival=event.date if event.kind=='ARRIVAL' else event.stay.arrived_on if event.stay_id else None
-        saved_departure=event.date if event.kind=='DEPARTURE' else None
-        saved_state='MV' if event.kind in {'ARRIVAL','TRANSFER'} else 'MO'
-        saved_camp=event.to_camp_id if event.kind in {'ARRIVAL','TRANSFER'} else event.from_camp_id
-        if (saved_state,saved_arrival,saved_departure,saved_camp)==(state,arrival,departure,row.housing_camp_id):return False
+        saved=initial_state_values(row)
+        if (saved['state'],saved['arrival_date'],saved['departure_date'])==(state,arrival,departure):return False
+        if allow_correction:return _correct_recorded_state(user,row,data)
         raise ValidationError('Начальное состояние уже введено. Для изменений используйте историю и заезд / выезд.')
     # Opening balances can predate the daily edit window.
     # Validate again inside the transaction for callers outside the HTTP form.
@@ -276,7 +359,7 @@ def save_assignment(user,data,row_id=None,initial_state=None,previous=None):
     row.group=group;row.planning_position=role;row.construction_object=obj;row.housing_camp=camp
     row.assigned_from=start;row.assigned_until=end;row.pattern=pattern
     row.save()
-    initialize_state(user,row,initial_state,enforce_assignment_start=not bool(row_id))
+    initialize_state(user,row,initial_state,enforce_assignment_start=not bool(row_id),allow_correction=bool(row_id))
     person.schedule_slot=row;person.save(update_fields=['schedule_slot','updated_at'])
     return row
 
@@ -364,15 +447,19 @@ def edit(request,pk=None):
         form_data['assigned_from']=assignment_date.isoformat()
     form=AssignmentForm(form_data,company=request.user.company,row=row,initial=initial)
     form.fields['assigned_from'].widget=forms.HiddenInput()
-    initial_form=InitialStateForm(request.POST if request.method=='POST' else None,prefix='initial') if not historical and (row is None or not row.initial_movement_id) else None
+    state_initial=initial_state_values(row) if row else None
+    state_data=request.POST.copy() if request.method=='POST' else None
+    if state_data is not None and row and 'initial-state' not in state_data:
+        state_data['initial-state']=state_initial['state']
+        state_data['initial-arrival_date']=state_initial['arrival_date'] or ''
+        state_data['initial-departure_date']=state_initial['departure_date'] or ''
+    initial_form=InitialStateForm(state_data,prefix='initial',initial=state_initial) if not historical else None
     if request.method=='POST':
         valid=form.is_valid()
         if historical:form.add_error(None,'Назначение удалено.' if row.cancelled_at else 'Прежнее назначение сохранено в истории. Изменяйте действующее назначение.');valid=False
         if initial_form:
             initial_form.as_of=None if row else form.cleaned_data.get('assigned_from')
             valid=initial_form.is_valid() and valid
-        elif request.POST.get('initial-state'):
-            form.add_error(None,'Начальное состояние уже введено. Используйте историю и заезд / выезд.');valid=False
     conflict_links=None
     if request.method=='POST' and valid:
         try:saved=save_assignment(request.user,form.cleaned_data,pk,initial_form.cleaned_data if initial_form else None)
@@ -386,7 +473,8 @@ def edit(request,pk=None):
             if state:
                 label='На вахте' if state=='MV' else 'МО — межвахтовый отдых'
                 action='Фактический заезд' if state=='MV' else 'Фактический выезд на МО'
-                messages.success(request,f'Назначение сохранено. Статус: «{label}». {action} оформлен на {fact_day:%d.%m.%Y}.')
+                if row:messages.success(request,f'Назначение сохранено. Статус: «{label}». Связанные даты фактического движения обновлены.')
+                else:messages.success(request,f'Назначение сохранено. Статус: «{label}». {action} оформлен на {fact_day:%d.%m.%Y}.')
             else:messages.success(request,'Сотрудник назначен. Фактический заезд оформляется отдельно.')
             query={'camp':saved.housing_camp_id}
             if fact_day:query['date']=fact_day.isoformat()
