@@ -158,7 +158,8 @@ class ApprovalAssignmentTests(TestCase):
         self.assertEqual(notice.status,'SENT');self.assertEqual(notice.delivered_to,[self.admin.email])
         self.assertEqual(mail.outbox[0].to,[self.admin.email]);self.assertNotIn(self.first.email,mail.outbox[0].to)
         html=mail.outbox[0].alternatives[0].content
-        self.assertLess(html.index('Согласовать</button>'),html.index('Что согласовывается'))
+        self.assertLess(html.index('Согласовать всех</a>'),html.index('Что согласовывается'))
+        self.assertNotIn('<form',html);self.assertNotIn('<textarea',html);self.assertNotIn('<button',html)
         self.assertIn('Открыть согласование в портале',html);self.assertIn('Назначенный согласующий',html)
         self.assertIn('http://main.portal.example.org/planning/tasks/',html)
         self.assertNotIn('http://portal.example.org/planning/tasks/',html)
