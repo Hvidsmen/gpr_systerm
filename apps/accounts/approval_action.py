@@ -2,6 +2,7 @@ import logging
 
 from django.core import signing
 from django.core.exceptions import PermissionDenied,ValidationError
+from django.db import transaction
 from django.shortcuts import get_object_or_404,render
 from django.views.decorators.http import require_http_methods
 from django.views.decorators.csrf import csrf_exempt
@@ -13,6 +14,7 @@ from .models import ApprovalNotice,User
 logger=logging.getLogger(__name__)
 
 
+@transaction.atomic
 def execute(notice,task,actor,decision,comment,selected=None):
     intended=notice.intended_user
     if task.status!='OPEN':raise ValidationError('Это согласование уже завершено или заменено.')
