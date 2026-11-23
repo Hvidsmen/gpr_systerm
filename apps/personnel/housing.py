@@ -223,7 +223,7 @@ def move(user,kind,camp,day,people,employees=(),target=None,comment='',snapshot=
 
 
 @transaction.atomic
-def request_moves(user,kind,camp,day,people,employees=(),target=None,comment='',snapshot=None,departure_destination='REST',approval_batch=None):
+def request_moves(user,kind,camp,day,people,employees=(),target=None,comment='',snapshot=None,departure_destination='REST',approval_batch=None,base_city=''):
     if camp.company_id!=user.company_id or target and target.company_id!=user.company_id:raise ValidationError('Местонахождение другой компании.')
     # A request contains a planned movement date, so it may be in the future.
     # The fact-editing window applies only to today and historical dates.
@@ -231,6 +231,16 @@ def request_moves(user,kind,camp,day,people,employees=(),target=None,comment='',
         require_movement_day(user,day);require_backdate_comment(day,comment)
     if kind not in {'ARRIVAL','DEPARTURE','TRANSFER'}:raise ValidationError('Неизвестное действие.')
     if kind=='TRANSFER' and (not target or target.pk==camp.pk):raise ValidationError('Выберите другое местонахождение для перевода.')
+    normalized_base_city=''
+    if kind=='DEPARTURE' and base_city:
+        from . import base_cities
+        normalized_base_city=base_cities.normalize_name(base_city)
+        city=base_cities.find(user.company,normalized_base_city,active=True)
+        if city is None:
+            if base_cities.find(user.company,normalized_base_city,active=False):
+                raise ValidationError('Такой базовый город находится в архиве. Восстановите его в справочнике или выберите другой.')
+            city=base_cities.create(company=user.company,name=normalized_base_city)
+        normalized_base_city=city.name
     selected={p.pk:p for p in people}
     for employee in employees:
         if employee.company_id!=user.company_id or not employee.is_active:raise ValidationError('Выберите действующего сотрудника своей компании.')
@@ -251,7 +261,7 @@ def request_moves(user,kind,camp,day,people,employees=(),target=None,comment='',
             departure_destination=departure_destination if kind=='DEPARTURE' else 'CAMP' if kind=='TRANSFER' else '',requested_by=user,approval_batch=approval_batch,
             employment_kind='TRANSFER' if kind=='TRANSFER' else 'STAFF',planning_position_name=planning_position_name(person,day),position_name=employee.display_position if employee else '',
             construction_object=construction_object,site_object=site_object,site=site_object.name if site_object else request_camp.name,phone=(employee.phone if employee else '') or person.phone,
-            travel_status='Ожидается',note=comment))
+            base_city=normalized_base_city,travel_status='Ожидается',note=comment))
     for row in rows:
         if row.kind in {'ARRIVAL','DEPARTURE','TRANSFER'} and row.source=='DISPATCHER':row.status='PENDING_APPROVAL'
         row.save()

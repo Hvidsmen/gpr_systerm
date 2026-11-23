@@ -1,6 +1,6 @@
 {% extends 'base.html' %}{% load static %}
 {% block title %}Персонал · {% if movement_page == 'arrival' %}заезд{% elif movement_page == 'departure' %}выезд{% else %}новая заявка{% endif %}{% endblock %}
-{% block extra_css %}<link rel="stylesheet" href="{% static 'personnel/housing.css' %}"><link rel="stylesheet" href="{% static 'personnel/recruitment.css' %}?v=20261123-fixed-bulk-actions">{% endblock %}
+{% block extra_css %}<link rel="stylesheet" href="{% static 'personnel/housing.css' %}?v=20261123-departure-city"><link rel="stylesheet" href="{% static 'personnel/recruitment.css' %}?v=20261123-fixed-bulk-actions">{% endblock %}
 {% block content %}
 <h1>Персонал</h1>{% include 'personnel/_personnel_sections.html' %}
 {% include 'personnel/_dispatcher_nav.html' %}
@@ -14,4 +14,4 @@
 {% include 'personnel/_movement_panels.html' %}
 {% else %}<p class="alert alert-info">Для фактического перемещения нужно действующее местонахождение.</p>{% endif %}{% endif %}
 {% endblock %}
-{% block extra_js %}<script src="{% static 'personnel/housing.js' %}?v=20261117-planned-movement-date" defer></script>{% endblock %}
+{% block extra_js %}<script src="{% static 'personnel/housing.js' %}?v=20261123-departure-city" defer></script>{% endblock %}

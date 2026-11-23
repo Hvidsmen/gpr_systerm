@@ -4,7 +4,7 @@ from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 from apps.accounts.models import Role,User
-from .models import MovementRecommendationOverride,MovementReviewRequest
+from .models import BaseCity,MovementRecommendationOverride,MovementReviewRequest
 from .movement_recommendations import add,build,create_requests,exclude
 
 
@@ -14,6 +14,7 @@ class MovementRecommendationTests(TestCase):
         from .test_housing import HousingTests
         HousingTests.setUpTestData.__func__(cls)
         cls.personnel_dispatcher=cls.hr
+        cls.base_city=BaseCity.objects.create(company=cls.company,name='Челябинск')
 
     def auto_rows(self):
         return [
@@ -112,7 +113,8 @@ class MovementRecommendationTests(TestCase):
         self.assertEqual(list(form.initial['employees']),[self.employee.pk])
         create=self.client.post(reverse('personnel:movements'),{'workflow_action':'move','kind':'DEPARTURE','date':str(recommendation['request_on']),
             'camp':self.a.pk,'employees':[self.employee.pk],'target':'','comment':'','snapshot':form.initial['snapshot'],
-            'recommendation_scope':form.initial['recommendation_scope'],f'departure_destination_{self.employee.pk}':'REST'})
+            'recommendation_scope':form.initial['recommendation_scope'],f'departure_destination_{self.employee.pk}':'REST',
+            f'base_city_{self.employee.pk}':self.base_city.pk})
         self.assertEqual(create.status_code,302)
         row=MovementReviewRequest.objects.get();self.assertEqual(row.status,'PENDING_APPROVAL');self.assertEqual(row.departure_destination,'REST')
         self.assertEqual(row.recommendation_planned_on,recommendation['planned_on'])

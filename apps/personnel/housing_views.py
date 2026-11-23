@@ -39,6 +39,24 @@ def movement_access(request):
     require_roles(request.user,{'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER'})
 
 
+def departure_base_city(request,employee):
+    """Resolve one employee's departure city without accepting foreign rows."""
+    from .models import BaseCity
+    from . import base_cities
+    choice=request.POST.get(f'base_city_{employee.pk}','')
+    if choice=='__new__':
+        name=base_cities.normalize_name(request.POST.get(f'new_base_city_{employee.pk}',''))
+        if not name:raise ValidationError(f'{employee.display_name}: укажите новый базовый город.')
+        if base_cities.find(request.user.company,name,active=False):
+            raise ValidationError(f'{employee.display_name}: такой город находится в архиве. Восстановите его в справочнике или выберите другой.')
+        return name
+    try:city_id=int(choice)
+    except (TypeError,ValueError):raise ValidationError(f'{employee.display_name}: выберите базовый город.')
+    city=BaseCity.objects.filter(company=request.user.company,pk=city_id,is_active=True,merged_into__isnull=True).first()
+    if city is None:raise ValidationError(f'{employee.display_name}: выбранный базовый город недоступен.')
+    return city.name
+
+
 @login_required
 @require_http_methods(['GET','POST'])
 def remove_from_dispatch(request,pk):
@@ -276,9 +294,12 @@ def workspace(request, movements=False, movement_page='new'):
                     destination=request.POST.get(f'departure_destination_{employee.pk}','')
                     if destination not in {'REST','DISMISSAL'}:
                         raise ValidationError(f'{employee.display_name}: выберите причину выезда.')
+                    city_name='' if direct else departure_base_city(request,employee)
                     employee_people=[person for person in people if person.employee_id==employee.pk]
+                    departure_options={'departure_destination':destination,**common}
+                    if not direct:departure_options['base_city']=city_name
                     part_saved,part_excluded=housing.process_moves_partially(operation,request.user,'DEPARTURE',camp,form.cleaned_data['date'],employee_people,
-                        employees=[employee],departure_destination=destination,**common)
+                        employees=[employee],**departure_options)
                     saved.extend(part_saved);movement_exclusions.extend(part_excluded)
             else:
                 saved,movement_exclusions=housing.process_moves_partially(operation,request.user,form.cleaned_data['kind'],camp,form.cleaned_data['date'],people,

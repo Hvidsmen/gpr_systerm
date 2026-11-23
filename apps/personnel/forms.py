@@ -196,6 +196,16 @@ class MovementForm(forms.Form):
         self.fields['employees'].queryset=ordered(employees.filter(Q(is_active=True)|Q(pk__in=present)).select_related('position__planning_mapping__brigade__group'),group_path='position__planning_mapping__brigade__group',within=('position__name','last_name','first_name','pk'))
         self.fields['employees'].widget.attrs['data-present-employees']=','.join(str(pk) for pk in present.values_list('person__employee_id',flat=True) if pk)
         import json
+        self.fields['employees'].widget.attrs['data-base-cities']=json.dumps([
+            {'value':str(city.pk),'label':city.name}
+            for city in BaseCity.objects.filter(company=company,is_active=True,merged_into__isnull=True).order_by('name','pk')
+        ],ensure_ascii=False)
+        departure_details={}
+        for key,value in self.data.items():
+            for prefix,field in (('departure_destination_','destination'),('base_city_','city'),('new_base_city_','new_city')):
+                if key.startswith(prefix) and key[len(prefix):].isdigit():
+                    departure_details.setdefault(key[len(prefix):],{})[field]=value
+        self.fields['employees'].widget.attrs['data-departure-details']=json.dumps(departure_details,ensure_ascii=False)
         by_camp={}
         for camp_id,employee_id in present_stays(company,day).exclude(person__employee=None).values_list('camp_id','person__employee_id'):
             by_camp.setdefault(str(camp_id),[]).append(str(employee_id))

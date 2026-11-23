@@ -6,7 +6,7 @@ from django.contrib.staticfiles.testing import StaticLiveServerTestCase
 from django.test import TestCase
 from django.urls import reverse
 from .test_housing import HousingTests
-from .models import CampStay, HousingEvent, MovementReviewRequest, StaffingSlot
+from .models import BaseCity, CampStay, HousingEvent, MovementReviewRequest, StaffingSlot
 from . import housing
 
 
@@ -16,12 +16,14 @@ class MovementActionTests(TestCase):
     def setUp(self):
         self.client.force_login(self.hr)
         self.url=reverse('personnel:housing')
+        self.city=BaseCity.objects.create(company=self.company,name='Челябинск')
         self.unassigned=StaffingSlot.objects.create(company=self.company,group=self.group,person=self.second_person,status='МО',pattern=self.pattern,arrival_date=self.day)
 
     def payload(self, kind, employee=None, camp=None, **extra):
         employee=employee or self.employee.pk
         if kind=='DISMISSAL':kind='DEPARTURE';extra[f'departure_destination_{employee}']='DISMISSAL'
         elif kind=='DEPARTURE':extra[f'departure_destination_{employee}']=extra.pop('destination','REST')
+        if kind=='DEPARTURE':extra.setdefault(f'base_city_{employee}',self.city.pk)
         return {'camp':(camp or self.a).pk,'kind':kind,'date':str(self.day),'employees':[employee], 'snapshot':housing.movement_snapshot(self.hr),**extra}
 
     def test_unassigned_employee_has_arrival_button_and_must_choose_camp(self):
@@ -72,6 +74,7 @@ class MovementActionTests(TestCase):
         response=self.client.post(url,{'workflow_action':'move','camp':self.a.pk,'kind':'DEPARTURE',
             'date':future,'employees':[self.employee.pk],
             f'departure_destination_{self.employee.pk}':'REST',
+            f'base_city_{self.employee.pk}':self.city.pk,
             'snapshot':page.context['form'].initial['snapshot']})
         self.assertRedirects(response,reverse('personnel:my_movement_requests'),fetch_redirect_response=False)
         request=MovementReviewRequest.objects.get(person=self.person)
@@ -107,9 +110,14 @@ class MovementActionTests(TestCase):
         payload['employees']=[self.employee.pk,self.second_employee.pk]
         payload[f'departure_destination_{self.employee.pk}']='REST'
         payload[f'departure_destination_{self.second_employee.pk}']='DISMISSAL'
+        payload[f'base_city_{self.second_employee.pk}']='__new__'
+        payload[f'new_base_city_{self.second_employee.pk}']='Пермь'
         self.assertEqual(self.client.post(self.url,payload).status_code,302)
         reasons=dict(MovementReviewRequest.objects.values_list('person_id','departure_destination'))
         self.assertEqual(reasons,{self.person.pk:'REST',self.second_person.pk:'DISMISSAL'})
+        cities=dict(MovementReviewRequest.objects.values_list('person_id','base_city'))
+        self.assertEqual(cities,{self.person.pk:'Челябинск',self.second_person.pk:'Пермь'})
+        self.assertTrue(BaseCity.objects.filter(company=self.company,name='Пермь',is_active=True).exists())
 
     def test_dismissal_without_current_presence_does_not_create_exit(self):
         response=self.client.post(self.url,self.payload('DISMISSAL',employee=self.second_employee.pk))
