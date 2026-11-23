@@ -8,7 +8,7 @@ from django.test import TestCase,Client
 from django.core.exceptions import ValidationError
 from django.urls import reverse
 from django.utils import timezone
-from apps.accounts.models import User,Role
+from apps.accounts.models import AccessGroup,User,Role
 from apps.resources.models import Employee
 from apps.production.history_models import FactRevision
 from . import test_housing as housing_fixtures
@@ -89,6 +89,19 @@ class LodgingTests(TestCase):
         LodgingPresence.objects.filter(user=self.commandant,camp=self.a).update(expires_at=timezone.now()-timedelta(seconds=1))
         LodgingControl.objects.filter(company=self.company).update(expires_at=timezone.now()-timedelta(seconds=1))
         self.assertTrue(lodging.presence(self.colleague,self.a,viewer)['editor'])
+
+    def test_commandant_group_limits_lodging_to_assigned_locations(self):
+        group=AccessGroup.objects.create(company=self.company,name='Комендант одного местонахождения',role=self.commandant.role)
+        group.assigned_camps.add(self.a)
+        self.commandant.access_group=group;self.commandant.save()
+        self.assertEqual(list(lodging.camps_for(self.commandant)),[self.a])
+        page=self.client.get(reverse('personnel:lodging'))
+        self.assertEqual(page.status_code,200);self.assertContains(page,self.a.name);self.assertNotContains(page,self.b.name)
+        self.assertEqual(self.client.get(reverse('personnel:lodging'),{'camp':self.b.pk}).status_code,404)
+        with self.assertRaises(ValidationError):lodging.presence(self.commandant,self.b,str(uuid4()))
+        report=self.client.get(reverse('personnel:lodging_composition'),{'date':self.day,'mode':'FACTUAL',
+            'view':'POSITION','camps':[self.b.pk]})
+        self.assertFalse(report.context['form'].is_valid());self.assertFalse(report.context['rows'])
 
     def test_expired_renew_and_stale_signed_form_rejected(self):
         key=self.activate_editor();signed=lodging.claim(self.commandant,self.a,self.day,self.employee,self.bed,key)

@@ -19,6 +19,19 @@ TTL=timedelta(minutes=5)
 PRESENCE_TTL=timedelta(seconds=90)
 
 
+def camps_for(user):
+    """Locations visible to the user; commandant groups define an explicit camp scope."""
+    rows=Camp.objects.filter(company=user.company)
+    if role_code(user)=='COMMANDANT' and user.access_group_id:
+        rows=rows.filter(commandant_access_groups=user.access_group_id)
+    return rows.distinct()
+
+
+def require_camp_access(user,camp):
+    if camp.company_id!=user.company_id or not camps_for(user).filter(pk=camp.pk).exists():
+        raise ValidationError('Нет доступа к этому местонахождению.')
+
+
 def present(company, day=None):
     """Operationally current accommodation, independent of recorded dates.
 
@@ -31,6 +44,7 @@ def present(company, day=None):
 
 
 def available_beds(company,camp,day,*,user=None,session=None):
+    if user:require_camp_access(user,camp)
     occupied=present(company).filter(camp=camp).values('bed_id')
     return LodgingBed.objects.filter(company=company,building__camp=camp,building__camp__is_active=True,building__is_active=True,state='AVAILABLE').exclude(pk__in=occupied).select_related('building')
 
@@ -76,6 +90,7 @@ def editor_control(user,camp):
 
 
 def editor_state(user,camp):
+    require_camp_access(user,camp)
     now=timezone.now()
     row=LodgingControl.objects.filter(company=user.company,resource='camp',resource_id=camp.pk,expires_at__gt=now).select_related('locked_by').first()
     return bool(row and row.locked_by_id==user.pk),display_user(row.locked_by) if row and row.locked_by_id else ''
@@ -83,6 +98,7 @@ def editor_state(user,camp):
 
 def require_editor(user,camp):
     require_roles(user,OPERATORS)
+    require_camp_access(user,camp)
     mine,owner=editor_state(user,camp)
     if not mine:raise ValidationError(f'Местонахождение сейчас редактирует {owner}.' if owner else 'Откройте местонахождение, чтобы получить право редактирования.')
 
@@ -90,7 +106,7 @@ def require_editor(user,camp):
 @transaction.atomic
 def presence(user,camp,session,action='touch'):
     require_roles(user,READERS);session=session_id(session)
-    if camp.company_id!=user.company_id:raise ValidationError('Местонахождение другой компании.')
+    require_camp_access(user,camp)
     now=timezone.now()
     LodgingPresence.objects.filter(company=user.company,camp=camp,expires_at__lte=now).delete()
     control=editor_control(user,camp)

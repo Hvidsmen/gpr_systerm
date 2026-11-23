@@ -50,6 +50,7 @@ def sync_group_role(sender, instance, raw=False, **kwargs):
 
 @receiver(m2m_changed, sender=AccessGroup.production_additional_objects.through)
 @receiver(m2m_changed, sender=AccessGroup.assigned_objects.through)
+@receiver(m2m_changed, sender=AccessGroup.assigned_camps.through)
 def sync_group_objects(sender, instance, action, reverse, pk_set, **kwargs):
     if is_loading_fixture():return
     if reverse:
@@ -57,9 +58,15 @@ def sync_group_objects(sender, instance, action, reverse, pk_set, **kwargs):
             raise ValidationError('Изменяйте объекты через группу доступа.')
         return
     if action == 'pre_add':
-        from apps.projects.models import ConstructionObject
-        if ConstructionObject.objects.filter(pk__in=pk_set).exclude(company_id=instance.company_id).exists():
-            raise ValidationError('Нельзя назначить объект другой компании.')
+        if sender is AccessGroup.assigned_camps.through:
+            from apps.personnel.models import Camp
+            invalid=Camp.objects.filter(pk__in=pk_set).exclude(company_id=instance.company_id).exists()
+            message='Нельзя назначить местонахождение другой компании.'
+        else:
+            from apps.projects.models import ConstructionObject
+            invalid=ConstructionObject.objects.filter(pk__in=pk_set).exclude(company_id=instance.company_id).exists()
+            message='Нельзя назначить объект другой компании.'
+        if invalid:raise ValidationError(message)
     if action in {'post_add', 'post_remove', 'post_clear'}:
         for user in instance.members.all():
             apply_group(user)
@@ -70,14 +77,17 @@ class GroupForm(forms.ModelForm):
 
     class Meta:
         model = AccessGroup
-        fields = ['name', 'role', 'assigned_objects', 'production_additional_objects', 'ad_group_dn']
+        fields = ['name', 'role', 'assigned_objects', 'production_additional_objects', 'assigned_camps', 'ad_group_dn']
 
     def __init__(self, *args, company, **kwargs):
         super().__init__(*args, **kwargs)
         self.instance.company = company
         self.fields['role'].queryset = self.fields['role'].queryset.filter(code__in=ROLES - {'ADMIN'})
+        commandant_id=self.fields['role'].queryset.filter(code='COMMANDANT').values_list('pk',flat=True).first()
+        if commandant_id:self.fields['role'].widget.attrs['data-commandant-role']=str(commandant_id)
         self.fields['assigned_objects'].queryset = self.fields['assigned_objects'].queryset.filter(company=company)
         self.fields['production_additional_objects'].queryset = self.fields['assigned_objects'].queryset
+        self.fields['assigned_camps'].queryset = self.fields['assigned_camps'].queryset.filter(company=company).order_by('name','pk')
         self.fields['members'].queryset = User.objects.filter(company=company, is_superuser=False, is_staff=False).exclude(role__code='ADMIN')
         if self.instance.pk:
             self.initial['members'] = self.instance.members.values_list('pk', flat=True)
@@ -85,6 +95,8 @@ class GroupForm(forms.ModelForm):
         self.fields['assigned_objects'].label='Основные объекты · с ежедневными заданиями'
         self.fields['assigned_objects'].help_text='По этим объектам диспетчер заполняет факт и получает ежедневные задания. Для других ролей — обычная область доступа.'
         self.fields['production_additional_objects'].help_text='Для диспетчеров производства и всех направлений: можно просматривать и изменять факт, сотрудников, связи и акты, но ежедневные задания по этим объектам не создаются. Основные объекты уже доступны; повторять их не нужно.'
+        self.fields['assigned_camps'].label='Местонахождения коменданта'
+        self.fields['assigned_camps'].help_text='Обязательно для роли «Комендант участка». Участники группы увидят проживание, вагоны, места, историю и отчёты только по выбранным местонахождениям.'
         self.fields['assigned_objects'].queryset=self.fields['assigned_objects'].queryset.select_related('project','parent').order_by('project__name','parent_id','name','pk')
         self.fields['assigned_objects'].label_from_instance=lambda obj:obj.project.name+' / '+(obj.parent.name+' → ' if obj.parent_id else '')+obj.name
         self.fields['production_additional_objects'].queryset=self.fields['assigned_objects'].queryset
@@ -108,6 +120,12 @@ class GroupForm(forms.ModelForm):
         if dn and AccessGroup.objects.filter(ad_group_dn__iexact=dn).exclude(pk=self.instance.pk).exists():
             raise forms.ValidationError('Эта группа AD уже связана с группой доступа.')
         return dn
+
+    def clean(self):
+        data=super().clean();role=data.get('role');camps=data.get('assigned_camps')
+        if role and role.code=='COMMANDANT' and camps is not None and not camps.exists():
+            self.add_error('assigned_camps','Выберите хотя бы одно местонахождение для коменданта.')
+        return data
 
 
 @login_required
@@ -148,12 +166,12 @@ def groups(request, pk=None):
     if role.isdigit():query=query.filter(role_id=role)
     if ad=='linked':query=query.exclude(ad_group_dn='')
     if ad=='manual':query=query.filter(ad_group_dn='')
-    query=query.select_related('role').prefetch_related('assigned_objects','production_additional_objects').annotate(member_count=Count('members',distinct=True)).order_by('name','pk')
+    query=query.select_related('role').prefetch_related('assigned_objects','production_additional_objects','assigned_camps').annotate(member_count=Count('members',distinct=True)).order_by('name','pk')
     page=Paginator(query,30).get_page(request.GET.get('page'))
-    limited={'PLANNER','FOREMAN','DISPATCHER','PERSONNEL_DISPATCHER','MECHANIZATION_DISPATCHER','TRANSPORT_DISPATCHER','ALL_FACT_DISPATCHER','FUEL_WAREHOUSE'}
+    limited={'PLANNER','FOREMAN','DISPATCHER','PERSONNEL_DISPATCHER','MECHANIZATION_DISPATCHER','TRANSPORT_DISPATCHER','ALL_FACT_DISPATCHER','FUEL_WAREHOUSE','COMMANDANT'}
     for row in page:
         row.scope_limited=row.role.code in limited
-        row.scope_empty=row.scope_limited and not row.assigned_objects.all()
+        row.scope_empty=(not row.assigned_camps.all()) if row.role.code=='COMMANDANT' else row.scope_limited and not row.assigned_objects.all()
         row.ad_label=row.ad_group_dn.split(',')[0].removeprefix('CN=').removeprefix('cn=')
     params=request.GET.copy();params.pop('page',None)
     return render(request,'accounts/access_groups.html',{'form':form,'editing':bool(pk),'edited_group':group,'groups':page.object_list,'page':page,'stats':stats,'q':search,'role_filter':role,'ad_filter':ad,'filter_query':params.urlencode(),'roles':Role.objects.filter(code__in=ROLES-{'ADMIN'}),'editor_open':bool(pk or request.method=='POST' or request.GET.get('create')=='1')})

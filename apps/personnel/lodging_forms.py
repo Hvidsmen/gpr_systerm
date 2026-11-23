@@ -51,8 +51,10 @@ class LodgingFilter(StyledForm):
     state=forms.ChoiceField(label='Состояние мест',required=False,choices=[('','Все'),('OCCUPIED','Занятые'),('FREE','Свободные'),('RESERVED','Зарезервированные'),('UNAVAILABLE','Недоступные')])
     buildings=forms.ModelMultipleChoiceField(label='Вагоны / корпуса',queryset=LodgingBuilding.objects.none(),required=False)
     beds=LodgingBedMultipleChoiceField(label='Места',queryset=LodgingBed.objects.none(),required=False,widget=LodgingFilterBedSelect)
-    def __init__(self,*args,company,**kwargs):
-        super().__init__(*args,**kwargs);self.fields['camp'].queryset=Camp.objects.filter(company=company)
+    def __init__(self,*args,company,camp_queryset=None,**kwargs):
+        super().__init__(*args,**kwargs)
+        camps=Camp.objects.filter(company=company) if camp_queryset is None else camp_queryset.filter(company=company)
+        self.fields['camp'].queryset=camps
         camp_id=(self.data.get('camp') if self.is_bound else self.initial.get('camp'))
         if hasattr(camp_id,'pk'):camp_id=camp_id.pk
         if str(camp_id or '').isdigit():
@@ -76,8 +78,10 @@ class LodgingReportFilter(StyledForm):
     building=forms.ModelMultipleChoiceField(label='Вагоны / корпуса',queryset=LodgingBuilding.objects.none(),required=False)
     state=forms.ChoiceField(label='Состояние',required=False,choices=[('','Все'),('OCCUPIED','Занято'),('FREE','Свободно'),('RESERVED','Зарезервировано'),('UNAVAILABLE','Недоступно')])
     q=forms.CharField(label='Поиск',required=False,widget=forms.TextInput(attrs={'placeholder':'Сотрудник, табельный номер, вагон или место'}))
-    def __init__(self,*args,company,**kwargs):
-        super().__init__(*args,**kwargs);self.fields['camp'].queryset=Camp.objects.filter(company=company)
+    def __init__(self,*args,company,camp_queryset=None,**kwargs):
+        super().__init__(*args,**kwargs)
+        camps=Camp.objects.filter(company=company) if camp_queryset is None else camp_queryset.filter(company=company)
+        self.fields['camp'].queryset=camps
         camp_id=(self.data.get('camp') if self.is_bound else self.initial.get('camp'))
         if hasattr(camp_id,'pk'):camp_id=camp_id.pk
         self.fields['building'].queryset=LodgingBuilding.objects.filter(company=company,camp_id=camp_id) if str(camp_id or '').isdigit() else LodgingBuilding.objects.none()
@@ -96,14 +100,16 @@ class LodgingCompositionFilter(StyledForm):
     room=forms.CharField(label='Комната',required=False)
     resident_kind=forms.ChoiceField(label='Тип проживающего',required=False,choices=[('','Все'),('employee','Сотрудники из справочника'),('guest','Временные проживающие')])
     q=forms.CharField(label='Поиск',required=False,widget=forms.TextInput(attrs={'placeholder':'ФИО или табельный номер'}))
-    def __init__(self,*args,company,**kwargs):
-        super().__init__(*args,**kwargs);self.fields['camps'].queryset=Camp.objects.filter(company=company)
+    def __init__(self,*args,company,camp_queryset=None,**kwargs):
+        super().__init__(*args,**kwargs)
+        camps=Camp.objects.filter(company=company) if camp_queryset is None else camp_queryset.filter(company=company)
+        self.fields['camps'].queryset=camps
         selected=self.data.getlist('camps') if self.is_bound else [str(getattr(value,'pk',value)) for value in self.initial.get('camps',[])]
         camp_ids=[value for value in selected if str(value).isdigit()]
-        buildings=LodgingBuilding.objects.filter(company=company)
+        buildings=LodgingBuilding.objects.filter(company=company,camp__in=camps)
         if camp_ids:buildings=buildings.filter(camp_id__in=camp_ids)
         self.fields['buildings'].queryset=buildings
-        stays=LodgingStay.objects.filter(company=company)
+        stays=LodgingStay.objects.filter(company=company,camp__in=camps)
         organizations=set(stays.exclude(organization_snapshot='').values_list('organization_snapshot',flat=True))
         organizations.update(str(row) for row in LodgingOrganization.objects.filter(company=company,is_active=True))
         positions=set(stays.exclude(position_snapshot='').values_list('position_snapshot',flat=True))

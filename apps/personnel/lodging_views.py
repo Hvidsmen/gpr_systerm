@@ -43,7 +43,7 @@ def measured(response,label,started,**parts):
 def parameters(request):
     source=request.POST if request.method=='POST' else request.GET
     if not str(source.get('camp','')).isdigit():raise Http404('Укажите местонахождение.')
-    camp=get_object_or_404(Camp,company=request.user.company,pk=source.get('camp'))
+    camp=get_object_or_404(lodging.camps_for(request.user),pk=source.get('camp'))
     try:day=date.fromisoformat(source.get('date',''))
     except (ValueError,TypeError):day=timezone.localdate()
     return camp,day
@@ -152,7 +152,7 @@ def filter_beds(request):
     """Search places for the board filters without rendering the full catalogue."""
     require_roles(request.user,lodging.READERS)
     if not str(request.GET.get('camp','')).isdigit():return JsonResponse({'items':[],'page':1,'pages':1})
-    camp=get_object_or_404(Camp,company=request.user.company,pk=request.GET['camp'])
+    camp=get_object_or_404(lodging.camps_for(request.user),pk=request.GET['camp'])
     beds=LodgingBed.objects.filter(company=request.user.company,building__camp=camp).select_related('building')
     building_ids=[value for value in request.GET.getlist('building') if value.isdigit()]
     if building_ids:beds=beds.filter(building_id__in=building_ids)
@@ -271,13 +271,13 @@ def historical_occupancy(company,camp,day,mode):
 def historical_report(request):
     started=perf_counter()
     require_roles(request.user,lodging.READERS)
-    camps=Camp.objects.filter(company=request.user.company)
+    camps=lodging.camps_for(request.user)
     initial={'date':timezone.localdate(),'mode':'FACTUAL','view':'TABLE'}
     if not request.GET and camps.exists():initial['camp']=camps.first()
     query=request.GET.copy()
     if query and not query.get('mode'):query['mode']='FACTUAL'
     if query and not query.get('view'):query['view']='TABLE'
-    form=LodgingReportFilter(query or None,company=request.user.company,initial=initial)
+    form=LodgingReportFilter(query or None,company=request.user.company,camp_queryset=camps,initial=initial)
     rows=[];grouped_rows=[];stats=Counter();warning='';camp=None;day=initial['date'];mode='FACTUAL';view='TABLE'
     if form.is_valid():
         camp=form.cleaned_data['camp'];day=form.cleaned_data['date'];mode=form.cleaned_data['mode'];view=form.cleaned_data['view'];buildings=form.cleaned_data['building'];state=form.cleaned_data['state'];terms=form.cleaned_data['q'].casefold().split()
@@ -341,11 +341,11 @@ def composition_workbook(day,view,camps,summary_rows,rows):
 @require_GET
 def composition_report(request):
     started=perf_counter();require_roles(request.user,lodging.READERS)
-    available=Camp.objects.filter(company=request.user.company)
+    available=lodging.camps_for(request.user)
     initial={'date':timezone.localdate(),'mode':'FACTUAL','view':'POSITION','camps':list(available[:1])}
     query=request.GET.copy()
     if query and not query.get('mode'):query['mode']='FACTUAL'
-    form=LodgingCompositionFilter(query or None,company=request.user.company,initial=initial)
+    form=LodgingCompositionFilter(query or None,company=request.user.company,camp_queryset=available,initial=initial)
     rows=[];summary_rows=[];stats=Counter();camps=[];day=initial['date'];view='POSITION';mode='FACTUAL'
     if form.is_valid():
         data=form.cleaned_data;camps=list(data['camps']);day=data['date'];view=data['view'];mode=data['mode']
@@ -413,12 +413,19 @@ def launch_sync_worker(state):
 def board(request):
     started=perf_counter();timings={}
     require_roles(request.user,lodging.READERS)
-    camps=Camp.objects.filter(company=request.user.company)
+    camps=lodging.camps_for(request.user)
     raw=request.GET.copy()
     if request.method=='POST':raw.update({k:request.POST[k] for k in ('camp',) if k in request.POST})
     if not raw.get('camp') and camps.exists():raw['camp']=str(camps.first().pk)
-    selector=LodgingFilter(raw,company=request.user.company)
-    if not selector.is_valid():return render(request,'personnel/lodging.html',{'selector':selector,'has_camps':camps.exists()})
+    selector=LodgingFilter(raw,company=request.user.company,camp_queryset=camps)
+    if not selector.is_valid():
+        raw_camp=str(raw.get('camp') or '')
+        # A camp from this company that is outside the commandant's group scope
+        # is a real authorization failure. Foreign/invalid identifiers keep the
+        # old neutral response so the page does not disclose another company.
+        if raw_camp.isdigit() and Camp.objects.filter(pk=raw_camp,company=request.user.company).exists():
+            raise Http404('Местонахождение недоступно.')
+        return render(request,'personnel/lodging.html',{'selector':selector,'has_camps':camps.exists()})
     camp=selector.cleaned_data['camp'];day=timezone.localdate()
     # One operator edits the whole location; everybody else remains a live viewer.
     provided=request.POST.get('session') if request.method=='POST' else None
@@ -590,7 +597,7 @@ def claims(request):
         data=json.loads(request.body)
         if not isinstance(data,dict):raise ValidationError('Некорректные данные.')
         if not str(data.get('camp','')).isdigit() or not (str(data.get('employee','')).isdigit() ^ str(data.get('guest','')).isdigit()) or data.get('bed') and not str(data['bed']).isdigit():raise ValidationError('Выберите местонахождение, одного проживающего и место.')
-        camp=get_object_or_404(Camp,company=request.user.company,pk=data.get('camp'));day=date.fromisoformat(data.get('date',''))
+        camp=get_object_or_404(lodging.camps_for(request.user),pk=data.get('camp'));day=date.fromisoformat(data.get('date',''))
         state,_=touch_presence(request,camp,data.get('session'))
         if not state['editor']:raise ValidationError(editor_error(state))
         employee=get_object_or_404(Employee,company=request.user.company,pk=data.get('employee')) if str(data.get('employee','')).isdigit() else None
@@ -608,7 +615,7 @@ def presence(request):
     try:
         data=json.loads(request.body)
         if not isinstance(data,dict) or not str(data.get('camp','')).isdigit():raise ValidationError('Некорректные данные присутствия.')
-        camp=get_object_or_404(Camp,company=request.user.company,pk=data['camp'])
+        camp=get_object_or_404(lodging.camps_for(request.user),pk=data['camp'])
         return JsonResponse(lodging.presence(request.user,camp,data.get('session'),data.get('action','touch')))
     except (json.JSONDecodeError,ValidationError,ValueError,TypeError) as exc:return JsonResponse({'error':'; '.join(exc.messages) if isinstance(exc,ValidationError) else 'Некорректные данные.'},status=409)
 
@@ -639,7 +646,8 @@ def building_edit(request,pk=None):
 @require_http_methods(['GET','POST'])
 def bed_edit(request,building_pk,pk=None):
     require_roles(request.user,lodging.OPERATORS)
-    building=get_object_or_404(LodgingBuilding,company=request.user.company,pk=building_pk);camp=building.camp
+    building=get_object_or_404(LodgingBuilding.objects.select_related('camp'),company=request.user.company,
+        camp__in=lodging.camps_for(request.user),pk=building_pk);camp=building.camp
     access=editor_presence(request,camp,request.POST.get('presence_session'))
     try:day=date.fromisoformat(request.POST.get('date',request.GET.get('date','')))
     except ValueError:day=timezone.localdate()
@@ -672,7 +680,7 @@ def sync_status(request):
 def sync_camps(request,camp):
     ids=request.GET.getlist('camps') or [str(camp.pk)]
     if any(not str(pk).isdigit() for pk in ids):raise Http404('Некорректный список местонахождений.')
-    selected=list(Camp.objects.filter(company=request.user.company,pk__in=ids))
+    selected=list(lodging.camps_for(request.user).filter(pk__in=ids))
     if len(selected)!=len(set(ids)):raise Http404('Выберите местонахождение своей компании.')
     return selected
 
@@ -691,7 +699,7 @@ def sync(request):
             elif request.POST.get('action')=='production_arrival':
                 lodging.require_editor(request.user,camp)
                 if not str(request.POST.get('target_camp','')).isdigit():raise ValidationError('Выберите фактическое местонахождение.')
-                target=get_object_or_404(Camp,company=request.user.company,is_active=True,pk=request.POST['target_camp'])
+                target=get_object_or_404(lodging.camps_for(request.user),is_active=True,pk=request.POST['target_camp'])
                 actual=date.fromisoformat(request.POST.get('actual_date',''))
                 lodging_sync.confirm_production_arrival(request.user,camp,day,request.POST.get('signed'),target,actual)
                 messages.success(request,'Заезд оформлен. Производственный факт сохранён без изменений.')
@@ -722,7 +730,7 @@ def sync(request):
     for row in rows:row['signed']=lodging_sync.signed_issue(request.user,row)
     return render(request,'personnel/lodging_sync.html',{'camp':camp,'day':day,'issues':rows,'error':error,'sync_state':state,
         'sync_status_url':reverse('personnel:lodging_sync_status')+'?'+urlencode({'camp':camp.pk,'date':str(day)}),
-        'arrival_camps':Camp.objects.filter(company=request.user.company,is_active=True),'can_explain':role_code(request.user) in lodging.OPERATORS|lodging_sync.HR_OPERATORS and can_edit_fact_day(request.user,day),
+        'arrival_camps':lodging.camps_for(request.user).filter(is_active=True),'can_explain':role_code(request.user) in lodging.OPERATORS|lodging_sync.HR_OPERATORS and can_edit_fact_day(request.user,day),
         'can_confirm':role_code(request.user) in lodging_sync.HR_OPERATORS and can_edit_fact_day(request.user,day),'can_lodge':lodging.editor_state(request.user,camp)[0],'can_hr':role_code(request.user) in lodging_sync.HR_OPERATORS,
         **summary_context(request.user,camp,day)})
 
@@ -731,7 +739,8 @@ def sync(request):
 @require_http_methods(['GET','POST'])
 def stay_edit(request,pk):
     require_roles(request.user,lodging.OPERATORS)
-    stay=get_object_or_404(LodgingStay.objects.select_related('bed__building','employee','guest__organization','camp'),company=request.user.company,pk=pk)
+    stay=get_object_or_404(LodgingStay.objects.select_related('bed__building','employee','guest__organization','camp'),
+        company=request.user.company,camp__in=lodging.camps_for(request.user),pk=pk)
     access=editor_presence(request,stay.camp,request.POST.get('presence_session'))
     # Form validation uses a separate model instance; service rereads the locked original.
     form=CorrectionForm(request.POST if request.method=='POST' else None,instance=stay,initial={'version':stay.updated_at.isoformat()})

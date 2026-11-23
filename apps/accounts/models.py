@@ -41,6 +41,7 @@ class AccessGroup(BaseTimestampedModel):
     role = models.ForeignKey(Role, on_delete=models.PROTECT, verbose_name='Роль')
     assigned_objects = models.ManyToManyField('projects.ConstructionObject', blank=True, verbose_name='Объекты')
     production_additional_objects = models.ManyToManyField('projects.ConstructionObject', blank=True, related_name='production_view_groups', verbose_name='Производство: дополнительные объекты без ежедневных заданий')
+    assigned_camps = models.ManyToManyField('personnel.Camp', blank=True, related_name='commandant_access_groups', verbose_name='Местонахождения коменданта')
     ad_group_dn = models.CharField('DN группы AD', max_length=1024, blank=True, help_text='Полный distinguishedName группы AD. Пусто — только ручное назначение.')
 
     class Meta:

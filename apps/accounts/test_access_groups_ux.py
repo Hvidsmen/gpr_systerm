@@ -19,14 +19,27 @@ class GroupUxTests(TestCase):
         self.assertTrue(page.context['editor_open']);self.assertContains(page,'Изменить группу')
     def test_commandant_role_is_selectable_in_group_and_has_existing_lodging_rights(self):
         from .forms import CompanyUserAccessForm
+        from apps.personnel.models import Camp
         role=Role.objects.get(code='COMMANDANT');self.assertEqual(role.name,'Комендант участка')
         self.assertNotIn('ВЖГ', role.description)
+        assigned=Camp.objects.create(company=self.company,name='Дудинка')
+        forbidden=Camp.objects.create(company=self.company,name='Чужое местонахождение')
         page=self.client.get(self.url);self.assertIn(role,page.context['form'].fields['role'].queryset)
+        self.assertContains(page,'Местонахождения коменданта')
         form=CompanyUserAccessForm(company=self.company,instance=self.user);self.assertIn(role,form.fields['role'].queryset)
-        self.client.post(reverse('accounts:access_group_edit',args=[self.group.pk]),{'name':self.group.name,'role':role.pk,'members':[self.user.pk]})
+        invalid=self.client.post(reverse('accounts:access_group_edit',args=[self.group.pk]),{
+            'name':self.group.name,'role':role.pk,'members':[self.user.pk]})
+        self.assertEqual(invalid.status_code,200)
+        self.assertContains(invalid,'Выберите хотя бы одно местонахождение для коменданта.')
+        self.client.post(reverse('accounts:access_group_edit',args=[self.group.pk]),{
+            'name':self.group.name,'role':role.pk,'members':[self.user.pk],'assigned_camps':[assigned.pk]})
         self.user.refresh_from_db();self.assertEqual(self.user.role,role)
+        self.assertEqual(list(self.group.assigned_camps.all()),[assigned])
         self.client.force_login(self.user)
-        self.assertEqual(self.client.get(reverse('personnel:lodging')).status_code,200)
+        lodging=self.client.get(reverse('personnel:lodging'))
+        self.assertEqual(lodging.status_code,200);self.assertContains(lodging,assigned.name)
+        self.assertNotContains(lodging,forbidden.name)
+        self.assertEqual(self.client.get(reverse('personnel:lodging'),{'camp':forbidden.pk}).status_code,404)
         self.assertEqual(self.client.get(self.url).status_code,403)
 
     def test_role_descriptions_use_location_terminology(self):
