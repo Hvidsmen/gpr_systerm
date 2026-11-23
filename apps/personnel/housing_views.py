@@ -288,22 +288,30 @@ def workspace(request, movements=False, movement_page='new'):
             operation=housing.move if direct else housing.request_moves
             options={'setup_direct':True} if direct else {'approval_batch':uuid4()}
             common={'target':form.cleaned_data.get('target'),'comment':form.cleaned_data['comment'],'snapshot':form.cleaned_data['snapshot'],**options}
-            if form.cleaned_data['kind']=='DEPARTURE':
-                saved=[];movement_exclusions=[]
-                for employee in selected:
-                    destination=request.POST.get(f'departure_destination_{employee.pk}','')
-                    if destination not in {'REST','DISMISSAL'}:
-                        raise ValidationError(f'{employee.display_name}: выберите причину выезда.')
-                    city_name='' if direct else departure_base_city(request,employee)
-                    employee_people=[person for person in people if person.employee_id==employee.pk]
-                    departure_options={'departure_destination':destination,**common}
-                    if not direct:departure_options['base_city']=city_name
-                    part_saved,part_excluded=housing.process_moves_partially(operation,request.user,'DEPARTURE',camp,form.cleaned_data['date'],employee_people,
-                        employees=[employee],**departure_options)
-                    saved.extend(part_saved);movement_exclusions.extend(part_excluded)
-            else:
-                saved,movement_exclusions=housing.process_moves_partially(operation,request.user,form.cleaned_data['kind'],camp,form.cleaned_data['date'],people,
+            @transaction.atomic
+            def save_selected_movements():
+                # A departure can have an individual destination/base city for
+                # every employee, so it is persisted one row at a time.  Keep
+                # the complete package in one outer transaction: approval mail
+                # is queued with transaction.on_commit() and must not see/send
+                # the package while only its first employee has been saved.
+                if form.cleaned_data['kind']=='DEPARTURE':
+                    saved=[];exclusions=[]
+                    for employee in selected:
+                        destination=request.POST.get(f'departure_destination_{employee.pk}','')
+                        if destination not in {'REST','DISMISSAL'}:
+                            raise ValidationError(f'{employee.display_name}: выберите причину выезда.')
+                        city_name='' if direct else departure_base_city(request,employee)
+                        employee_people=[person for person in people if person.employee_id==employee.pk]
+                        departure_options={'departure_destination':destination,**common}
+                        if not direct:departure_options['base_city']=city_name
+                        part_saved,part_excluded=housing.process_moves_partially(operation,request.user,'DEPARTURE',camp,form.cleaned_data['date'],employee_people,
+                            employees=[employee],**departure_options)
+                        saved.extend(part_saved);exclusions.extend(part_excluded)
+                    return saved,exclusions
+                return housing.process_moves_partially(operation,request.user,form.cleaned_data['kind'],camp,form.cleaned_data['date'],people,
                     employees=selected,departure_destination='REST',**common)
+            saved,movement_exclusions=save_selected_movements()
         except (ValidationError,IntegrityError) as exc:form.add_error(None,'; '.join(exc.messages) if isinstance(exc,ValidationError) else 'Размещение изменилось одновременно с вашим вводом. Обновите список.')
         else:
             count=len(saved)

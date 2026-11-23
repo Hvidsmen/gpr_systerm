@@ -2,9 +2,11 @@ import json, os, shutil, subprocess
 from datetime import timedelta
 from pathlib import Path
 from unittest import skipUnless
+from unittest.mock import patch
 from django.contrib.staticfiles.testing import StaticLiveServerTestCase
-from django.test import TestCase
+from django.test import TestCase,TransactionTestCase
 from django.urls import reverse
+from apps.accounts.models import ApprovalAssignment
 from .test_housing import HousingTests
 from .models import BaseCity, CampStay, HousingEvent, MovementReviewRequest, StaffingSlot
 from . import housing
@@ -133,6 +135,39 @@ class MovementActionTests(TestCase):
         response=self.client.post(self.url,stale)
         self.assertEqual(response.status_code,200)
         self.assertFalse(HousingEvent.objects.filter(departure_destination='DISMISSAL').exists())
+
+
+class MovementBulkNotificationTransactionTests(TransactionTestCase):
+    def setUp(self):
+        HousingTests.setUpTestData.__func__(type(self))
+        self.client.force_login(self.hr)
+        self.url=reverse('personnel:housing')
+        self.city=BaseCity.objects.create(company=self.company,name='Челябинск')
+        CampStay.objects.create(company=self.company,person=self.second_person,camp=self.a,
+            arrived_on=self.day,recorded_by=self.hr)
+        for stage in ('MANAGER','SITE_CHIEF'):
+            ApprovalAssignment.objects.create(company=self.company,process='MOVEMENT',stage_code=stage,
+                user=self.admin,changed_by=self.admin)
+
+    def test_bulk_departure_mail_is_queued_after_complete_package_is_saved(self):
+        counts_at_send=[]
+
+        def record_package_size(_notice_pk):
+            counts_at_send.append(MovementReviewRequest.objects.count())
+
+        payload={'camp':self.a.pk,'kind':'DEPARTURE','date':str(self.day),
+            'employees':[self.employee.pk,self.second_employee.pk],
+            f'departure_destination_{self.employee.pk}':'REST',
+            f'departure_destination_{self.second_employee.pk}':'REST',
+            f'base_city_{self.employee.pk}':self.city.pk,
+            f'base_city_{self.second_employee.pk}':self.city.pk,
+            'snapshot':housing.movement_snapshot(self.hr)}
+        with patch('apps.accounts.approval_mail.send_notice',side_effect=record_package_size):
+            response=self.client.post(self.url,payload)
+
+        self.assertEqual(response.status_code,302)
+        self.assertEqual(MovementReviewRequest.objects.count(),2)
+        self.assertEqual(counts_at_send,[2,2])
 
 
 @skipUnless(os.environ.get('MOVEMENT_ACTION_BROWSER_TESTS')=='1','Optional movement action browser scenario')
