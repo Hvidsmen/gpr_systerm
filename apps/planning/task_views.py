@@ -120,6 +120,15 @@ class TaskCreate(View):
 class TaskDetail(View):
     def get(self,request,pk):
         task=get_object_or_404(service.visible(request.user).select_related('assigned_to','created_by','construction_object','work'),pk=pk)
+        if task.key.startswith(('personnel-movement-batch:','personnel-movement-approval:')):
+            # Backfill notices for movement tasks created before initial mail
+            # synchronisation was added.  queue_task is idempotent, so opening
+            # an already synchronised task never sends a duplicate message.
+            from apps.personnel.departure_workflow import sync_approval_task,task_route_rows
+            row=task_route_rows(task).filter(status__in=['PENDING_APPROVAL','RETURNED']).first()
+            if row:
+                sync_approval_task(row)
+                task.refresh_from_db()
         return self.show(request,task)
     def show(self,request,task):
         from .daily_schedule_approval import next_action

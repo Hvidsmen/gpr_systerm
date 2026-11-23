@@ -211,6 +211,11 @@ def create_approval(row):
                  'параллельно: Руководитель ОП Дудинка, безопасность, главный механик, фельдшер, персонал, эксперт по труду и заработной плате.')
     if task.title!=title or task.description!=description:
         task.title=title;task.description=description;task.save(update_fields=['title','description','updated_at'])
+    # The task and its route are created together, therefore the first
+    # approvers must be resolved here as well.  Previously this happened only
+    # after a decision, so a newly submitted movement had no ApprovalNotice
+    # and consequently no initial email.
+    sync_approval_task(row)
     return task
 
 

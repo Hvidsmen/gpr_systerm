@@ -3,13 +3,17 @@ from decimal import Decimal
 from io import BytesIO
 from uuid import uuid4
 
-from django.test import TestCase
+from django.core import mail
+from django.test import TestCase,override_settings
 from django.urls import reverse
 from django.utils import timezone
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.core.exceptions import ValidationError,PermissionDenied
 
-from apps.accounts.models import Company, Role, User
+from apps.accounts.approval_assignments import replace
+from apps.accounts.invitation_models import CompanyMailSettings
+from apps.accounts.models import ApprovalNotice, Company, Role, User
+from apps.planning.models import WorkTask
 from apps.projects.models import ConstructionObject, Project
 from apps.resources.models import Employee, Position
 from . import housing
@@ -43,6 +47,36 @@ class MovementReviewRequestTests(TestCase):
         row.travel_time='08:30';row.travel_status='Ожидается';row.employment_kind=row.employment_kind or 'STAFF'
         row.planned_hub_departure_date=timezone.localdate();row.planned_hub_departure_time='12:30'
         row.save(update_fields=['planning_position_name','position_name','construction_object','base_city','phone','request_number','travel_time','travel_status','employment_kind','planned_hub_departure_date','planned_hub_departure_time','updated_at'])
+
+    @override_settings(STAGING_MODE=True,EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+    def test_initial_submission_sends_approval_mail_and_opening_backfills_missing_notice(self):
+        self.admin.email='movement-admin@example.org';self.admin.save(update_fields=['email'])
+        CompanyMailSettings.objects.create(company=self.company,host='smtp.example.org',port=25,security='NONE',
+            from_email='portal@example.org',portal_url='http://portal.example.org/')
+        manager=User.objects.create_user(username='mail-manager',company=self.company,role=Role.objects.get(code='MANAGER'))
+        site_chief=User.objects.create_user(username='mail-site-chief',company=self.company,role=Role.objects.get(code='SITE_CHIEF'))
+        replace(company=self.company,process='MOVEMENT',stage_code='MANAGER',user=manager,actor=self.admin,
+            construction_object=self.obj,camp=self.camp)
+        replace(company=self.company,process='MOVEMENT',stage_code='SITE_CHIEF',user=site_chief,actor=self.admin,
+            construction_object=self.obj,camp=self.camp)
+
+        with self.captureOnCommitCallbacks(execute=True):
+            housing.request_moves(self.personnel,'ARRIVAL',self.camp,timezone.localdate(),[self.person])
+
+        notices=ApprovalNotice.objects.filter(company=self.company,process='MOVEMENT').order_by('stage_code')
+        self.assertEqual(notices.count(),2)
+        self.assertEqual(set(notices.values_list('status',flat=True)),{'SENT'})
+        self.assertEqual(len(mail.outbox),2)
+        self.assertTrue(all(message.to==[self.admin.email] for message in mail.outbox))
+
+        # Existing tasks created before the fix are repaired lazily on open.
+        task=WorkTask.objects.get(company=self.company,key__startswith='personnel-movement-approval:')
+        notices.delete();mail.outbox.clear();self.client.force_login(self.admin)
+        with self.captureOnCommitCallbacks(execute=True):
+            response=self.client.get(reverse('planning:task_detail',args=[task.pk]))
+        self.assertEqual(response.status_code,200)
+        self.assertEqual(ApprovalNotice.objects.filter(company=self.company,process='MOVEMENT',status='SENT').count(),2)
+        self.assertEqual(len(mail.outbox),2)
 
     def test_approver_cannot_execute_perevakhta_or_dispatcher_facts(self):
         from .departure_workflow import arrive_camp,arrive_hub
