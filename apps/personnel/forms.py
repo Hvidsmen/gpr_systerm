@@ -4,6 +4,7 @@ from django.db.models import Q
 from apps.resources.models import Position
 from .models import BaseCity, Board, MovementExcelSiteMapping, MovementReviewRequest, Person, StaffingGroup, StaffingSlot, ZupWorkSchedule
 from .employee_widgets import RemoteEmployeeSelect, RemoteEmployeeSelectMultiple
+from . import base_cities
 
 
 class StyledModelForm(forms.ModelForm):
@@ -272,8 +273,10 @@ class MovementReviewForm(StyledModelForm):
         from .models import Camp
         self.fields['camp'].queryset=Camp.objects.filter(company=self.instance.company,is_active=True).order_by('name','pk')
         self.initial['camp']=self.instance.to_camp_id if self.instance.kind=='ARRIVAL' else self.instance.from_camp_id
-        self.fields['base_city_choice'].queryset=BaseCity.objects.filter(company=self.instance.company).order_by('name')
-        current=BaseCity.objects.filter(company=self.instance.company,name__iexact=self.instance.base_city.strip()).first() if self.instance.base_city else None
+        cities=BaseCity.objects.filter(company=self.instance.company,is_active=True)
+        current=base_cities.find(self.instance.company,self.instance.base_city) if self.instance.base_city else None
+        if current:cities=BaseCity.objects.filter(company=self.instance.company).filter(Q(is_active=True)|Q(pk=current.pk))
+        self.fields['base_city_choice'].queryset=cities.order_by('name')
         if current:self.initial['base_city_choice']=current.pk
         elif self.instance.base_city:self.initial['new_base_city']=self.instance.base_city
         self.fields['request_number'].disabled=True
@@ -308,6 +311,8 @@ class MovementReviewForm(StyledModelForm):
     def clean(self):
         data=super().clean();new=' '.join((data.get('new_base_city') or '').split());selected=data.get('base_city_choice')
         if new and selected:self.add_error('new_base_city','Выберите город из списка или добавьте новый, но не оба варианта.')
+        if new and base_cities.find(self.instance.company,new,active=False):
+            self.add_error('new_base_city','Такой город находится в архиве. Восстановите его в справочнике базовых городов.')
         if self.confirm and not (new or selected):self.add_error('base_city_choice','Выберите базовый город или добавьте новый.')
         if data.get('movement_date') and data.get('planned_hub_departure_date') and data['planned_hub_departure_date']<data['movement_date']:
             self.add_error('planned_hub_departure_date','Выезд из ОП Дудинка не может быть запланирован раньше выезда из местонахождения.')

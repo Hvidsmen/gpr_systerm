@@ -810,7 +810,8 @@ def movement_review_accept(request,pk):
             selected_city=form.cleaned_data.get('base_city_choice');new_city=form.cleaned_data.get('new_base_city','')
             if new_city:
                 from .models import BaseCity
-                selected_city=BaseCity.objects.filter(company=request.user.company,name__iexact=new_city).first() or BaseCity.objects.create(company=request.user.company,name=new_city)
+                from . import base_cities
+                selected_city=base_cities.find(request.user.company,new_city,active=True) or BaseCity.objects.create(company=request.user.company,name=new_city)
             if selected_city:locked.base_city=selected_city.name
             submit_own_draft=confirm and locked.status=='OPEN' and locked.source=='DISPATCHER' and locked.requested_by_id==request.user.pk
             accept_excel=confirm and locked.status=='OPEN' and locked.source=='EXCEL'

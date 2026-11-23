@@ -275,12 +275,26 @@ class HousingEvent(ActualHistoryMixin, PersonnelModel):
 
 class BaseCity(PersonnelModel):
     name=models.CharField('Базовый город',max_length=150)
+    is_active=models.BooleanField('Действующий',default=True)
+    archived_at=models.DateTimeField('Дата архивации',null=True,blank=True)
+    archived_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.SET_NULL,null=True,blank=True,
+        related_name='+',verbose_name='Кто архивировал')
+    merged_into=models.ForeignKey('self',on_delete=models.SET_NULL,null=True,blank=True,
+        related_name='merged_sources',verbose_name='Объединён с городом')
+    status_reason=models.CharField('Причина изменения статуса',max_length=500,blank=True)
     class Meta:
         ordering=['name','pk']
         constraints=[models.UniqueConstraint(fields=['company','name'],name='personnel_unique_base_city')]
     def clean(self):
         super().clean();self.name=' '.join(self.name.split())
         if not self.name:raise ValidationError({'name':'Укажите название города.'})
+        duplicate=any(' '.join(value.split()).casefold()==self.name.casefold() for value in
+            type(self).objects.filter(company_id=self.company_id).exclude(pk=self.pk).values_list('name',flat=True)) if self.company_id else False
+        if duplicate and not self.merged_into_id:
+            raise ValidationError({'name':'Город с таким названием уже существует.'})
+        if self.merged_into_id:
+            if self.merged_into_id==self.pk:raise ValidationError({'merged_into':'Нельзя объединить город с самим собой.'})
+            if self.merged_into.company_id!=self.company_id:raise ValidationError({'merged_into':'Выберите город своей компании.'})
     def __str__(self):return self.name
 
 

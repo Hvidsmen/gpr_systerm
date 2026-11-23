@@ -65,13 +65,17 @@ def _specialist(company,name):
 def _catalogue_match(model,company,name):
     name=_name(name)
     if not name:return None
-    matches=list(model.objects.filter(company=company,name__iexact=name)[:2])
+    if model is BaseCity:
+        from . import base_cities
+        return base_cities.find(company,name,active=True)
+    queryset=model.objects.filter(company=company)
+    matches=list(queryset.filter(name__iexact=name)[:2])
     if len(matches)==1:return matches[0]
     # Excel often appends an object or work area in parentheses to a valid
     # catalogue position.  Use the base only when it resolves unambiguously.
     base=re.sub(r'(?:\s*\([^()]*(?:\)|$))+\s*$','',name).strip(' ,;-/')
     if not base or base.casefold()==name.casefold():return None
-    matches=list(model.objects.filter(company=company,name__iexact=base)[:2])
+    matches=list(queryset.filter(name__iexact=base)[:2])
     return matches[0] if len(matches)==1 else None
 
 

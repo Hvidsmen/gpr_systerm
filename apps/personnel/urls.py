@@ -1,8 +1,16 @@
 from django.urls import path
 from . import views, housing_views, plan_assignments, employee_search
 from .admin_cleanup import cleanup as admin_cleanup
+from . import base_city_views
 app_name='personnel'
 urlpatterns=[
+    path('base-cities/',base_city_views.city_list,name='base_city_list'),
+    path('base-cities/create/',base_city_views.city_create,name='base_city_create'),
+    path('base-cities/<int:pk>/update/',base_city_views.city_update,name='base_city_update'),
+    path('base-cities/<int:pk>/archive/',base_city_views.city_archive,name='base_city_archive'),
+    path('base-cities/<int:pk>/restore/',base_city_views.city_restore,name='base_city_restore'),
+    path('base-cities/<int:pk>/merge/',base_city_views.city_merge,name='base_city_merge'),
+    path('base-cities/<int:pk>/delete/',base_city_views.city_delete,name='base_city_delete'),
     path('employees/search/',employee_search.search,name='employee_search'),
     path('administration/',admin_cleanup,name='admin_cleanup'),
     path('assignments/create/',plan_assignments.edit,name='plan_assignment_create'),

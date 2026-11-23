@@ -144,7 +144,9 @@ def check_route(user, match, method):
     if role in RECRUITMENT_ROLES:
         require_roles(user,RECRUITMENT_ROLES)
         own_account = namespace == 'accounts' and (name in {'settings','logout','password_change','access_pending','impersonation_stop'} or name == 'user_detail' and match.kwargs.get('pk') == user.pk)
-        recruitment_routes = namespace == 'personnel' and name in {'recruitment_list','recruitment_ready','recruitment_requests','recruitment_detail','recruitment_candidate_create','recruitment_candidate_edit','recruitment_candidate_card','recruitment_candidate_inline','recruitment_candidate_stage','recruitment_candidate_stage_advance','recruitment_candidate_stage_return','recruitment_candidate_employment','recruitment_handoff','recruitment_document','recruitment_pool','recruitment_pool_create','recruitment_pool_edit','recruitment_pool_import','recruitment_specialists'}
+        recruitment_routes = namespace == 'personnel' and name in {'recruitment_list','recruitment_ready','recruitment_requests','recruitment_detail','recruitment_candidate_create','recruitment_candidate_edit','recruitment_candidate_card','recruitment_candidate_inline','recruitment_candidate_stage','recruitment_candidate_stage_advance','recruitment_candidate_stage_return','recruitment_candidate_employment','recruitment_handoff','recruitment_document','recruitment_pool','recruitment_pool_create','recruitment_pool_edit','recruitment_pool_import','recruitment_specialists','base_city_list'}
+        if role==RECRUITMENT_HEAD and namespace=='personnel' and name in {'base_city_create','base_city_update','base_city_archive','base_city_restore','base_city_merge','base_city_delete'}:
+            return
         if role==RECRUITMENT_HEAD and namespace=='personnel' and name in {'recruitment_specialist_create','recruitment_specialist_edit','recruitment_specialist_delete'}:
             return
         if own_account or recruitment_routes or namespace == 'dashboard' and name == 'index' and method in {'GET','HEAD'}:return
@@ -190,7 +192,8 @@ def check_route(user, match, method):
         equipment_routes |= {'catalogue_review_list', 'catalogue_review_detail','catalogue_association_import'}
         routes = personnel_routes if role == PERSONNEL_CATALOG_MANAGER else equipment_routes
         own_tasks = namespace == 'planning' and name in {'task_list','task_detail'} and (name == 'task_detail' or method in {'GET','HEAD'})
-        if own_account or own_tasks or namespace == 'resources' and name in routes:
+        personnel_catalogue_route=(role==PERSONNEL_CATALOG_MANAGER and namespace=='personnel' and name.startswith('base_city_'))
+        if own_account or own_tasks or namespace == 'resources' and name in routes or personnel_catalogue_route:
             return
         raise PermissionDenied('Доступ разрешён только к справочникам вашего направления.')
     if namespace=='resources' and name in {'equipment_unit_list','equipment_unit_detail','equipment_type_list'} and method in {'GET','HEAD'}:
@@ -267,6 +270,10 @@ def check_route(user, match, method):
         return
     if namespace=='personnel' and name=='camps' and method in {'GET','HEAD'}:
         require_roles(user,READ_ROLES|{'HR_HEAD','PERSONNEL_DISPATCHER','MECHANIZATION_DISPATCHER','ALL_FACT_DISPATCHER','COMMANDANT'});return
+    if namespace=='personnel' and name.startswith('base_city_'):
+        from apps.personnel.recruitment import READ
+        managers={'ADMIN','HR_HEAD',RECRUITMENT_HEAD,PERSONNEL_CATALOG_MANAGER}
+        require_roles(user,READ|{PERSONNEL_CATALOG_MANAGER} if name=='base_city_list' else managers);return
     if namespace=='personnel' and name=='employee_search' and method in {'GET','HEAD'}:
         # The lodging screen uses the same company-scoped remote employee
         # selector as personnel forms.  Commandants may search employees for

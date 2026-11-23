@@ -11,6 +11,7 @@ from .recruitment_models import (RECRUITMENT_STAGES,POOL_UNAVAILABLE_STAGES,RECR
 from .recruitment import allowed_camps, validate_documents
 from .recruitment_stage_flow import MANUAL_EXIT_STAGES,STEP_CONFIRMATIONS,allowed_manual_stage
 from .employee_widgets import RemoteEmployeeSelect
+from . import base_cities
 
 
 class RevisionForm(forms.Form):
@@ -204,7 +205,9 @@ class TalentPoolForm(forms.ModelForm):
                 for flag,date_field,_ in STEP_CONFIRMATIONS.get(step,()):
                     if self._original_confirmations.get(flag):
                         self.fields[flag].disabled=True;self.fields[date_field].disabled=True
-        self.fields['base_city'].queryset=BaseCity.objects.filter(company=company).order_by('name','pk')
+        cities=BaseCity.objects.filter(company=company,is_active=True)
+        if self.instance.base_city_id:cities=BaseCity.objects.filter(company=company).filter(Q(is_active=True)|Q(pk=self.instance.base_city_id))
+        self.fields['base_city'].queryset=cities.order_by('name','pk')
         self.fields['base_city'].empty_label='Выберите базовый город';self.fields['base_city'].required=False
         specialists=RecruitmentSpecialist.objects.filter(company=company,is_active=True)
         if self.instance.responsible_hr_id:
@@ -241,7 +244,7 @@ class TalentPoolForm(forms.ModelForm):
         instance=super().save(commit=False);source=dict(instance.source_data or {})
         new_city=self.cleaned_data.get('new_base_city','')
         if new_city:
-            instance.base_city=BaseCity.objects.filter(company=instance.company,name__iexact=new_city).first()
+            instance.base_city=base_cities.find(instance.company,new_city,active=True)
             if instance.base_city is None:instance.base_city=BaseCity.objects.create(company=instance.company,name=new_city)
         for field in self.source_fields:
             value=self.cleaned_data.get(field)
@@ -269,6 +272,8 @@ class TalentPoolForm(forms.ModelForm):
             self.add_error('stage','Для возврата по маршруту используйте отдельное действие «Вернуть этап» и укажите причину.')
         new_city=' '.join((data.get('new_base_city') or '').split());selected_city=data.get('base_city')
         if new_city and selected_city:self.add_error('new_base_city','Выберите город из списка или добавьте новый, но не оба варианта.')
+        if new_city and base_cities.find(self.instance.company,new_city,active=False):
+            self.add_error('new_base_city','Такой город находится в архиве. Восстановите его в справочнике базовых городов.')
         data['new_base_city']=new_city
         for flag,date_field in self.confirmation_pairs:
             if self._original_confirmations.get(flag):
