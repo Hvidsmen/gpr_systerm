@@ -75,6 +75,8 @@ class MovementReviewRequestTests(TestCase):
         self.assertIn(self.person.display_name,html);self.assertIn(self.group.position,html)
         self.assertIn('Заезд',html);self.assertIn(str(self.camp),html)
         self.assertNotIn('Руководитель проекта ИЛИ Начальник участка',html)
+        self.assertIn(f'decision=approve&amp;selected={MovementReviewRequest.objects.get().pk}',html)
+        self.assertIn(f'decision=reject&amp;selected={MovementReviewRequest.objects.get().pk}',html)
         self.assertIn('http://192.168.70.9:8002/planning/tasks/',html)
         self.assertIn('http://192.168.70.9:8002/accounts/approval/action/',html)
         self.assertNotIn('http://portal.example.org/planning/tasks/',html)
@@ -378,6 +380,38 @@ class MovementReviewRequestTests(TestCase):
         self.assertEqual(rows[0].status,'CANCELLED');self.assertEqual(rows[1].status,'CANCELLED')
         self.assertEqual(rows[1].approval_comment,'Перенести дату');self.assertIn('Отменено согласующим',rows[1].cancellation_reason)
         self.assertEqual(task.status,'SUPERSEDED')
+
+    def test_email_action_can_decide_one_batch_employee_and_then_all_remaining(self):
+        from django.test import Client
+        from apps.accounts.approval_mail import token
+        manager=User.objects.create_user(username='batch-mail-manager',company=self.company,
+            role=Role.objects.get(code='MANAGER'))
+        replace(company=self.company,process='MOVEMENT',stage_code='MANAGER',user=manager,actor=self.admin,
+            construction_object=self.obj,camp=self.camp)
+        second_employee=Employee.objects.create(company=self.company,last_name='Почтовый',first_name='Пётр',
+            employee_number='review-mail-2',position=self.position)
+        second=Person.objects.create(company=self.company,employee=second_employee,
+            full_name=second_employee.display_name,employee_number=second_employee.employee_number)
+        day=timezone.localdate();housing.move(self.reviewer,'ARRIVAL',self.camp,day,[self.person,second])
+        batch=uuid4();housing.request_moves(self.personnel,'DEPARTURE',self.camp,day,[self.person,second],
+            departure_destination='REST',approval_batch=batch,base_city='Уфа')
+        rows=list(MovementReviewRequest.objects.filter(approval_batch=batch).order_by('pk'))
+        task=WorkTask.objects.get(key=f'personnel-movement-batch:{batch}')
+        notice=ApprovalNotice.objects.get(task_id=task.pk,stage_code='MANAGER',intended_user=manager)
+        url=reverse('accounts:approval_email_action',args=[token(notice,self.admin)])
+        anonymous=Client(enforce_csrf_checks=True)
+        response=anonymous.post(url,{'decision':'approve','selected':[rows[0].pk]})
+        self.assertContains(response,'Решение сохранено.')
+        rows[0].refresh_from_db();rows[1].refresh_from_db()
+        self.assertEqual(rows[0].approval_route['MANAGER']['status'],'APPROVED')
+        self.assertEqual(rows[1].approval_route['MANAGER']['status'],'PENDING')
+        response=anonymous.get(url,{'decision':'reject','selected':rows[1].pk})
+        self.assertContains(response,'Решение только по сотруднику')
+        self.assertContains(response,second.display_name)
+        response=anonymous.post(url,{'decision':'approve'})
+        self.assertContains(response,'Решение сохранено.')
+        rows[1].refresh_from_db()
+        self.assertEqual(rows[1].approval_route['MANAGER']['status'],'APPROVED')
 
     def test_my_requests_filter_by_project_camp_employee_and_position(self):
         day=timezone.localdate()

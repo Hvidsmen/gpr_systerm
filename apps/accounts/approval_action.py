@@ -9,21 +9,26 @@ from .approval_mail import load_token
 from .models import ApprovalNotice,User
 
 
-def execute(notice,task,actor,decision,comment):
+def execute(notice,task,actor,decision,comment,selected=None):
     approved=decision=='approve'
     if decision not in {'approve','reject'}:raise ValidationError('Выберите решение.')
     if not approved and not comment.strip():raise ValidationError('При несогласовании комментарий обязателен.')
     intended=notice.intended_user
-    if not authorized(intended,notice.process,notice.stage_code,task.target_role):
-        raise ValidationError('Согласующий этапа был заменён. Используйте новое письмо.')
     if task.status!='OPEN':raise ValidationError('Это согласование уже завершено или заменено.')
     if notice.process=='MOVEMENT':
-        from apps.personnel.departure_workflow import active_route_roles,decide,sync_approval_task
+        from apps.personnel.departure_workflow import active_route_roles,decide,movement_scope,sync_approval_task
         rows=list(approval_rows_for_task(task).select_for_update().order_by('pk'))
-        rows=[row for row in rows if notice.stage_code in active_route_roles(row)]
+        rows=[row for row in rows if notice.stage_code in active_route_roles(row) and
+            authorized(intended,'MOVEMENT',notice.stage_code,notice.stage_code,**movement_scope(row))]
+        if selected is not None:
+            selected_ids={int(value) for value in selected if str(value).isdigit()}
+            if not selected_ids:raise ValidationError('Выберите хотя бы одного сотрудника.')
+            rows=[row for row in rows if row.pk in selected_ids]
         if not rows:raise ValidationError('Этот этап уже завершён или ещё не начался.')
         for row in rows:decide(actor,row,approved,comment,sync_task=False,step=notice.stage_code)
         sync_approval_task(rows[0],actor);return
+    if not authorized(intended,notice.process,notice.stage_code,task.target_role):
+        raise ValidationError('Согласующий этапа был заменён. Используйте новое письмо.')
     from core.plan_approval import SECTION_ACTIONS
     command=SECTION_ACTIONS.get(notice.stage_code,'approve') if approved else 'reject'
     if notice.process=='GPR':
@@ -59,11 +64,17 @@ def action(request,token):
     actor=User.objects.filter(pk=data.get('actor'),company=notice.company,is_active=True,archived_at__isnull=True).first()
     task=WorkTask.objects.select_related('version','review','schedule','schedule_review','construction_object','created_by').filter(pk=notice.task_id,company=notice.company).first()
     if not actor or not task:return render(request,'accounts/approval_email_action.html',{'error':invalid},status=400)
-    decision=request.POST.get('decision') if request.method=='POST' else request.GET.get('decision','')
+    source=request.POST if request.method=='POST' else request.GET
+    decision=source.get('decision','');selected=source.getlist('selected')
     error=''
     if request.method=='POST':
         try:
-            execute(notice,task,actor,decision,request.POST.get('comment','')[:4000])
+            execute(notice,task,actor,decision,request.POST.get('comment','')[:4000],selected or None)
             return render(request,'accounts/approval_email_action.html',{'success':'Решение сохранено.','task':task,'decision':decision})
         except (ValidationError,PermissionDenied) as exc:error='; '.join(exc.messages) if isinstance(exc,ValidationError) else str(exc)
-    return render(request,'accounts/approval_email_action.html',{'notice':notice,'task':task,'decision':decision,'error':error})
+    selected_names=[]
+    if selected and notice.process=='MOVEMENT':
+        selected_names=list(approval_rows_for_task(task).filter(pk__in=[value for value in selected if value.isdigit()]).values_list(
+            'person__full_name',flat=True))
+    return render(request,'accounts/approval_email_action.html',{'notice':notice,'task':task,'decision':decision,
+        'error':error,'selected':selected,'selected_names':selected_names})

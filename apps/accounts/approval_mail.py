@@ -61,12 +61,14 @@ def token(notice,recipient):
         'process':notice.process,'stage':notice.stage_code,'intended':notice.intended_user_id},salt=TOKEN_SALT,compress=True)
 
 
-def movement_rows(task):
+def movement_rows(task,notice=None):
     """Return the same employee summary shown on a movement approval task."""
     prefix='personnel-movement-approval:'
     batch_prefix='personnel-movement-batch:'
     if not task.key.startswith((prefix,batch_prefix)):return []
     from apps.personnel.models import MovementReviewRequest
+    from apps.personnel.departure_workflow import active_route_roles,movement_scope
+    from .approval_assignments import authorized
     rows=MovementReviewRequest.objects.filter(company=task.company)
     if task.key.startswith(batch_prefix):
         rows=rows.filter(approval_batch=task.key.removeprefix(batch_prefix))
@@ -85,7 +87,10 @@ def movement_rows(task):
         elif row.kind=='ARRIVAL':
             reason=row.get_employment_kind_display() if row.employment_kind else 'Заезд'
         else:reason='Перевод'
+        can_decide=bool(notice and notice.stage_code in active_route_roles(row) and
+            authorized(notice.intended_user,'MOVEMENT',notice.stage_code,notice.stage_code,**movement_scope(row)))
         result.append({'employee':row.person.display_name,'position':position,
+            'pk':row.pk,'can_decide':can_decide,
             'kind':{'ARRIVAL':'Заезд','DEPARTURE':'Выезд','TRANSFER':'Перевод'}.get(row.kind,row.kind),
             'reason':reason,'route':row.route_label(),'date':row.movement_date,
             'decision':row.workflow_status_label()})
@@ -126,8 +131,12 @@ def context(notice,task,recipient,cfg):
             ('Техники',str(grouped['equipment'])),('ГСМ',str(grouped['fuel']))]
         items=list(schedule.entries.filter(kind='work').values_list('label',flat=True)[:30])
     else:items=[]
+    movement=movement_rows(task,notice)
+    for row in movement:
+        row['approve_url']=action+'?decision=approve&selected='+str(row['pk'])
+        row['reject_url']=action+'?decision=reject&selected='+str(row['pk'])
     return {'notice':notice,'task':task,'recipient':recipient,'process_label':process,'stage_label':stage_label,
-        'details':details,'items':items,'movement_rows':movement_rows(task),
+        'details':details,'items':items,'movement_rows':movement,
         'action_url':action,
         'approve_url':action+'?decision=approve','reject_url':action+'?decision=reject',
         'portal_url':portal,'test_mode':getattr(settings,'STAGING_MODE',False),'admin_delivery':True}

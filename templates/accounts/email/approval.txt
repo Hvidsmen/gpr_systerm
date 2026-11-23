@@ -17,6 +17,9 @@
 {% if movement_rows %}{% for row in movement_rows %}• {{ row.employee }} · {{ row.position }}
   {{ row.kind }} · {{ row.reason }} · {{ row.route }} · {{ row.date|date:'d.m.Y' }}
   Решение: {{ row.decision }}
+{% if row.can_decide %}  Согласовать только этого сотрудника: {{ row.approve_url }}
+  Не согласовать только этого сотрудника: {{ row.reject_url }}
+{% endif %}
 {% endfor %}{% else %}{{ task.description|default:task.title }}
 {% endif %}
 {% for label,value in details %}{{ label }}: {{ value }}
