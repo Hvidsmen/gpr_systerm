@@ -40,8 +40,8 @@ class ApprovalAssignmentTests(TestCase):
         self.assertContains(response,'При замене согласующего укажите причину.')
         self.assertEqual(ApprovalAssignment.objects.get(process='GPR',stage_code='HR').user,self.first)
 
-    @override_settings(STAGING_MODE=True,EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
-    def test_staging_notice_goes_only_to_administrators_and_has_actions_first(self):
+    @override_settings(STAGING_MODE=False,EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+    def test_notice_goes_only_to_administrators_in_main_and_has_actions_first(self):
         CompanyMailSettings.objects.create(company=self.company,host='smtp.example.org',port=25,security='NONE',
             from_email='portal@example.org',portal_url='http://portal.example.org/')
         task=WorkTask.objects.create(company=self.company,key='approval:test:HR',kind='APPROVAL',title='Согласовать ГПР: должности',
@@ -53,4 +53,4 @@ class ApprovalAssignmentTests(TestCase):
         self.assertEqual(mail.outbox[0].to,[self.admin.email]);self.assertNotIn(self.first.email,mail.outbox[0].to)
         html=mail.outbox[0].alternatives[0].content
         self.assertLess(html.index('Согласовать</button>'),html.index('Что согласовывается'))
-        self.assertIn('Открыть согласование в портале',html);self.assertIn('Фактический согласующий',html)
+        self.assertIn('Открыть согласование в портале',html);self.assertIn('Назначенный согласующий',html)

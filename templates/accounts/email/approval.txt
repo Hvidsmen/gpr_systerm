@@ -1,4 +1,4 @@
-{% if test_mode %}ТЕСТОВОЕ ПИСЬМО. Фактический согласующий: {{ notice.intended_user.full_name }}.
+{% if admin_delivery %}{% if test_mode %}ТЕСТОВОЕ ПИСЬМО. {% endif %}Временная отправка администраторам. Назначенный согласующий: {{ notice.intended_user.full_name }}.
 
 {% endif %}ТРЕБУЕТСЯ РЕШЕНИЕ: {{ task.title }}
 

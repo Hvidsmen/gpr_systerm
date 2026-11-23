@@ -19,11 +19,11 @@ TOKEN_MAX_AGE=7*24*60*60
 
 
 def delivery_users(notice):
-    if getattr(settings,'STAGING_MODE',False):
-        return list(User.objects.filter(company=notice.company,is_active=True,archived_at__isnull=True).filter(
-            Q(role__code='ADMIN')|Q(is_superuser=True)).exclude(email='').order_by('pk'))
-    user=notice.intended_user
-    return [user] if user and user.is_active and user.archived_at is None and user.email else []
+    # Temporary rollout rule: approval mail is delivered only to company
+    # administrators in every environment. The intended approver remains in
+    # the workflow and is shown in the message.
+    return list(User.objects.filter(company=notice.company,is_active=True,archived_at__isnull=True).filter(
+        Q(role__code='ADMIN')|Q(is_superuser=True)).exclude(email='').order_by('pk'))
 
 
 def queue_task(task,process,stage_code,intended_user):
@@ -77,7 +77,7 @@ def context(notice,task,recipient,cfg):
     return {'notice':notice,'task':task,'recipient':recipient,'process_label':process,'details':details,'items':items,
         'action_url':action,
         'stage_label':task.title,'approve_url':action+'?decision=approve','reject_url':action+'?decision=reject',
-        'portal_url':portal,'test_mode':getattr(settings,'STAGING_MODE',False)}
+        'portal_url':portal,'test_mode':getattr(settings,'STAGING_MODE',False),'admin_delivery':True}
 
 
 def send_notice(pk):
@@ -92,8 +92,8 @@ def send_notice(pk):
             ApprovalNotice.objects.filter(pk=pk,status='PENDING').update(status='FAILED',error='Согласование уже не активно.');return
         recipients=delivery_users(notice)
         if not recipients:
-            text='У активных администраторов компании не указан email.' if getattr(settings,'STAGING_MODE',False) else 'У назначенного согласующего не указан email.'
-            ApprovalNotice.objects.filter(pk=pk,status='PENDING').update(status='FAILED',error=text);return
+            ApprovalNotice.objects.filter(pk=pk,status='PENDING').update(
+                status='FAILED',error='У активных администраторов компании не указан email.');return
         cfg,error=invitation_mail.ready(notice.company)
         if error:
             ApprovalNotice.objects.filter(pk=pk,status='PENDING').update(status='FAILED',error=error);return
