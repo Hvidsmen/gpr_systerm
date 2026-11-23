@@ -1,13 +1,16 @@
+from unittest.mock import patch
+
 from django.core import mail
 from django.core.exceptions import ValidationError
 from django.test import TestCase,override_settings
 from django.urls import reverse
+from django.utils import timezone
 
 from apps.planning.models import WorkTask
 from apps.personnel.models import Camp
 from apps.projects.models import ConstructionObject,Project
 from .approval_assignments import assignee,authorized,disable,replace
-from .approval_mail import send_notice
+from .approval_mail import queue_task,send_notice
 from .invitation_models import CompanyMailSettings
 from .models import ApprovalAssignment,ApprovalAssignmentChange,ApprovalNotice,ApprovalObserver,Company,Role,User
 
@@ -176,3 +179,19 @@ class ApprovalAssignmentTests(TestCase):
         self.assertIn('Действие от вас не требуется',observer_html)
         self.assertNotIn('Согласовать</button>',observer_html)
         self.assertNotIn('/approval/action/',observer_html)
+
+    @override_settings(APPROVAL_EMAIL_FORCE_SMTP=True)
+    @patch('apps.accounts.approval_mail.send_notice')
+    def test_legacy_dummy_success_is_requeued_once_for_live_staging_smtp(self,send):
+        task=WorkTask.objects.create(company=self.company,key='approval:legacy-dummy:HR',kind='APPROVAL',
+            title='Согласовать документ',target_role='HR_HEAD',assigned_to=self.first,created_by=self.admin)
+        notice=ApprovalNotice.objects.create(company=self.company,process='GPR',stage_code='HR',task_id=task.pk,
+            intended_user=self.first,intended_email=self.first.email,status='SENT',
+            delivered_to=[self.admin.email],sent_at=timezone.now())
+        with self.captureOnCommitCallbacks(execute=True):queue_task(task,'GPR','HR',self.first)
+        notice.refresh_from_db()
+        self.assertEqual(notice.status,'PENDING');self.assertEqual(notice.delivered_to,[])
+        send.assert_called_once_with(notice.pk)
+        notice.status='SENT';notice.delivery_backend='SMTP';notice.save(update_fields=['status','delivery_backend'])
+        with self.captureOnCommitCallbacks(execute=True):queue_task(task,'GPR','HR',self.first)
+        send.assert_called_once_with(notice.pk)

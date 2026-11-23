@@ -196,6 +196,7 @@ class ApprovalNotice(models.Model):
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='PENDING')
     intended_email = models.EmailField(blank=True)
     delivered_to = models.JSONField(default=list, blank=True)
+    delivery_backend = models.CharField(max_length=12, blank=True)
     error = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     sent_at = models.DateTimeField(null=True, blank=True)

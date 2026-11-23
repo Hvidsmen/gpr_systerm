@@ -66,6 +66,10 @@ LDAP_SERVERS = []
 LDAP_BIND_USER = LDAP_BIND_PASSWORD = ''
 EMAIL_BACKEND = 'django.core.mail.backends.dummy.EmailBackend'
 EMAIL_HOST = EMAIL_HOST_USER = EMAIL_HOST_PASSWORD = ''
+# Normal test mail remains disabled.  Approval notices are the deliberate
+# exception: they use the company SMTP settings and are delivered only to
+# active company administrators with a visible [ТЕСТ] subject prefix.
+APPROVAL_EMAIL_FORCE_SMTP = True
 INVITATION_ASYNC_ENABLED = False
 PORTAL_PUBLIC_URL = 'http://' + STAGING_CONFIG['hosts'][0] + ':' + str(STAGING_CONFIG['port']) + '/'
 MIDDLEWARE.insert(MIDDLEWARE.index('core.impersonation.ActAsMiddleware'), 'apps.accounts.staging_access.StagingGuard')

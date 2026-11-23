@@ -37,6 +37,13 @@ def queue_task(task,process,stage_code,intended_user):
     if not intended_user or task.status!='OPEN':return None
     notice,created=ApprovalNotice.objects.get_or_create(company=task.company,process=process,stage_code=stage_code,
         task_id=task.pk,intended_user=intended_user,defaults={'intended_email':intended_user.email})
+    # Before live approval SMTP was enabled, acceptance's dummy backend
+    # reported success although nothing left the process.  Requeue each such
+    # legacy notice once; successful SMTP delivery records its backend and is
+    # never duplicated on later page opens.
+    if not created and getattr(settings,'APPROVAL_EMAIL_FORCE_SMTP',False) and notice.status=='SENT' and notice.delivery_backend!='SMTP':
+        created=bool(ApprovalNotice.objects.filter(pk=notice.pk,status='SENT').exclude(delivery_backend='SMTP').update(
+            status='PENDING',delivered_to=[],sent_at=None,error=''))
     if created:transaction.on_commit(lambda pk=notice.pk:send_notice(pk))
     return notice
 
@@ -104,7 +111,9 @@ def send_notice(pk):
         cfg,error=invitation_mail.ready(notice.company)
         if error:
             ApprovalNotice.objects.filter(pk=pk,status='PENDING').update(status='FAILED',error=error);return
-        conn=invitation_mail.connection(cfg);conn.open()
+        force_smtp=getattr(settings,'APPROVAL_EMAIL_FORCE_SMTP',False)
+        conn=invitation_mail.connection(cfg,force_smtp=force_smtp);conn.open()
+        delivery_backend='SMTP' if isinstance(conn,invitation_mail.SMTPBackend) else type(conn).__module__.rsplit('.',1)[-1][:12].upper()
         delivered=[]
         try:
             for recipient in recipients:
@@ -132,9 +141,10 @@ def send_notice(pk):
             try:conn.close()
             except Exception:pass
         ApprovalNotice.objects.filter(pk=pk,status='PENDING').update(status='SENT',delivered_to=delivered,
-            sent_at=timezone.now(),error='; '.join(observer_errors))
+            delivery_backend=delivery_backend,sent_at=timezone.now(),error='; '.join(observer_errors))
     except Exception as exc:
-        ApprovalNotice.objects.filter(pk=pk).update(status='FAILED',error=safe_mail_error(exc))
+        ApprovalNotice.objects.filter(pk=pk).update(status='FAILED',
+            delivery_backend='SMTP' if getattr(settings,'APPROVAL_EMAIL_FORCE_SMTP',False) else '',error=safe_mail_error(exc))
 
 
 def load_token(value):

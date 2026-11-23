@@ -133,3 +133,9 @@ class InvitationCertificatePolicyTests(SimpleTestCase):
         backend=connection(self.config())
         self.assertIsInstance(backend,MemoryBackend)
         self.assertNotIn('ssl_context',backend.__dict__)
+
+    @override_settings(EMAIL_BACKEND='django.core.mail.backends.dummy.EmailBackend')
+    def test_approval_can_force_smtp_without_enabling_global_test_mail(self):
+        backend=connection(self.config('NONE'),force_smtp=True)
+        self.assertIsInstance(backend,SMTPBackend)
+        self.assertFalse(backend.use_tls);self.assertFalse(backend.use_ssl)

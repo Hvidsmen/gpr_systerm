@@ -67,9 +67,14 @@ def ready(company):
     except ValidationError as exc:return None,' '.join(exc.messages)
 
 
-def connection(cfg):
+def connection(cfg,force_smtp=False):
     validate_transport(cfg)
-    backend=mail.get_connection(host=cfg['host'],port=cfg['port'],username=cfg['username'],password=cfg['password'],use_tls=cfg['security']=='STARTTLS',use_ssl=cfg['security']=='SSL',timeout=settings.EMAIL_TIMEOUT,fail_silently=False)
+    options=dict(host=cfg['host'],port=cfg['port'],username=cfg['username'],password=cfg['password'],
+        use_tls=cfg['security']=='STARTTLS',use_ssl=cfg['security']=='SSL',timeout=settings.EMAIL_TIMEOUT,fail_silently=False)
+    # Acceptance normally uses Django's dummy backend.  Approval mail may
+    # explicitly opt into the real SMTP transport without enabling invitations
+    # or any other test-environment email.
+    backend=SMTPBackend(**options) if force_smtp else mail.get_connection(**options)
     if isinstance(backend,SMTPBackend) and (backend.use_tls or backend.use_ssl):
         # This policy applies only to invitation SMTP, never global TLS defaults.
         context=ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
