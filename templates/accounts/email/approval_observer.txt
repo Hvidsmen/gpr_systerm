@@ -1,0 +1,20 @@
+{% if test_mode %}ТЕСТОВОЕ ПИСЬМО.
+
+{% endif %}ИНФОРМАЦИОННОЕ ПИСЬМО ОБЩЕМУ НАБЛЮДАТЕЛЮ. Действие от вас не требуется.
+
+Начат этап: {{ task.title }}
+Открыть согласование в портале: {{ portal_url }}
+
+Процесс: {{ process_label }}
+Назначенный согласующий: {{ notice.intended_user.full_name }} · {{ notice.intended_user.position|default:notice.intended_user.role.name }}
+Объект: {{ task.construction_object|default:'—' }}
+Срок: {{ task.due_date|date:'d.m.Y'|default:'—' }}
+Отправил: {{ task.created_by.full_name|default:'—' }}
+
+Что согласовывается:
+{{ task.description|default:task.title }}
+{% for label,value in details %}{{ label }}: {{ value }}
+{% endfor %}{% if items %}
+Работы:
+{% for item in items %}• {{ item }}
+{% endfor %}{% endif %}

@@ -26,6 +26,13 @@ def delivery_users(notice):
         Q(role__code='ADMIN')|Q(is_superuser=True)).exclude(email='').order_by('pk'))
 
 
+def observer_users(notice,action_recipients):
+    action_ids={user.pk for user in action_recipients}
+    return list(User.objects.filter(approval_observer_memberships__company_id=notice.company_id,
+        company=notice.company,is_active=True,
+        archived_at__isnull=True).exclude(email='').exclude(pk__in=action_ids).select_related('role').distinct().order_by('pk'))
+
+
 def queue_task(task,process,stage_code,intended_user):
     if not intended_user or task.status!='OPEN':return None
     notice,created=ApprovalNotice.objects.get_or_create(company=task.company,process=process,stage_code=stage_code,
@@ -109,11 +116,23 @@ def send_notice(pk):
                 message.attach_alternative(render_to_string('accounts/email/approval.html',ctx),'text/html')
                 if message.send()!=1:raise RuntimeError('Почтовый сервер не принял письмо.')
                 delivered.append(recipient.email)
+            observer_errors=[]
+            for observer in observer_users(notice,recipients):
+                try:
+                    ctx=context(notice,task,observer,cfg)
+                    prefix='[ТЕСТ] ' if getattr(settings,'STAGING_MODE',False) else ''
+                    subject=(prefix+'Наблюдение за согласованием: '+task.title)[:255]
+                    message=EmailMultiAlternatives(subject,render_to_string('accounts/email/approval_observer.txt',ctx),
+                        invitation_mail.sender(cfg),[observer.email],connection=conn)
+                    message.attach_alternative(render_to_string('accounts/email/approval_observer.html',ctx),'text/html')
+                    if message.send()!=1:raise RuntimeError('Почтовый сервер не принял информационное письмо.')
+                    delivered.append(observer.email)
+                except Exception as exc:observer_errors.append(f'{observer.email}: {safe_mail_error(exc)}')
         finally:
             try:conn.close()
             except Exception:pass
         ApprovalNotice.objects.filter(pk=pk,status='PENDING').update(status='SENT',delivered_to=delivered,
-            sent_at=timezone.now(),error='')
+            sent_at=timezone.now(),error='; '.join(observer_errors))
     except Exception as exc:
         ApprovalNotice.objects.filter(pk=pk).update(status='FAILED',error=safe_mail_error(exc))
 

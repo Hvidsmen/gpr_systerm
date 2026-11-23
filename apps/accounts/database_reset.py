@@ -10,7 +10,7 @@ from uuid import uuid4
 ACCOUNT_TABLES = (
     'django_content_type', 'auth_permission', 'auth_group', 'accounts_company',
     'accounts_role', 'accounts_accessgroup', 'accounts_user', 'accounts_approvalassignment',
-    'accounts_approvalassignmentchange', 'accounts_approvalnotice',
+    'accounts_approvalassignmentchange', 'accounts_approvalobserver', 'accounts_approvalnotice',
     'auth_group_permissions', 'accounts_user_groups', 'accounts_user_user_permissions',
 )
 OBJECT_TABLES = ('projects_project', 'projects_constructionobject',

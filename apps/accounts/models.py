@@ -161,6 +161,20 @@ class ApprovalAssignmentChange(models.Model):
         ordering = ['-created_at', '-pk']
 
 
+class ApprovalObserver(BaseTimestampedModel):
+    """Company-wide informational recipient for every approval stage."""
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='approval_observers')
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='approval_observer_memberships', verbose_name='Наблюдатель')
+    added_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+
+    class Meta:
+        ordering = ['user__last_name', 'user__first_name', 'user__username']
+        constraints = [models.UniqueConstraint(fields=['company', 'user'], name='unique_company_approval_observer')]
+
+    def __str__(self):
+        return f'{self.company}: {self.user}'
+
+
 class ApprovalNotice(models.Model):
     STATUS_CHOICES = [('PENDING', 'Ожидает отправки'), ('SENT', 'Отправлено'), ('FAILED', 'Ошибка')]
     company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='approval_notices')
