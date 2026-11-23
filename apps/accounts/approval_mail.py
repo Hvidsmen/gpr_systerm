@@ -94,8 +94,13 @@ def movement_rows(task):
 
 def context(notice,task,recipient,cfg):
     signed=token(notice,recipient)
-    action=urljoin(cfg['portal_url'],reverse('accounts:approval_email_action',args=[signed]))
-    portal=urljoin(cfg['portal_url'],reverse('planning:task_detail',args=[task.pk]))
+    # Approval links belong to the environment that actually produced the
+    # message.  Company SMTP settings can be copied from production into the
+    # isolated acceptance database and may therefore contain the production
+    # portal URL; using it here would send a TEST decision to the live portal.
+    portal_base=invitation_mail.portal_address(settings.PORTAL_PUBLIC_URL)
+    action=urljoin(portal_base,reverse('accounts:approval_email_action',args=[signed]))
+    portal=urljoin(portal_base,reverse('planning:task_detail',args=[task.pk]))
     process=dict(ApprovalNotice._meta.get_field('process').choices)[notice.process]
     from .approval_assignments import PROCESS_STAGES
     stage_label=PROCESS_STAGES.get(notice.process,('',{}))[1].get(notice.stage_code,(notice.stage_code,''))[0]

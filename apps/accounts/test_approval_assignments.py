@@ -145,7 +145,8 @@ class ApprovalAssignmentTests(TestCase):
         self.assertRedirects(response,url)
         self.assertFalse(ApprovalObserver.objects.filter(pk=observer.pk).exists())
 
-    @override_settings(STAGING_MODE=False,EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+    @override_settings(STAGING_MODE=False,EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend',
+        PORTAL_PUBLIC_URL='http://main.portal.example.org/')
     def test_notice_goes_only_to_administrators_in_main_and_has_actions_first(self):
         CompanyMailSettings.objects.create(company=self.company,host='smtp.example.org',port=25,security='NONE',
             from_email='portal@example.org',portal_url='http://portal.example.org/')
@@ -159,6 +160,8 @@ class ApprovalAssignmentTests(TestCase):
         html=mail.outbox[0].alternatives[0].content
         self.assertLess(html.index('Согласовать</button>'),html.index('Что согласовывается'))
         self.assertIn('Открыть согласование в портале',html);self.assertIn('Назначенный согласующий',html)
+        self.assertIn('http://main.portal.example.org/planning/tasks/',html)
+        self.assertNotIn('http://portal.example.org/planning/tasks/',html)
 
     @override_settings(STAGING_MODE=False,EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
     def test_observer_receives_information_without_decision_actions(self):

@@ -48,7 +48,8 @@ class MovementReviewRequestTests(TestCase):
         row.planned_hub_departure_date=timezone.localdate();row.planned_hub_departure_time='12:30'
         row.save(update_fields=['planning_position_name','position_name','construction_object','base_city','phone','request_number','travel_time','travel_status','employment_kind','planned_hub_departure_date','planned_hub_departure_time','updated_at'])
 
-    @override_settings(STAGING_MODE=True,EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend')
+    @override_settings(STAGING_MODE=True,EMAIL_BACKEND='django.core.mail.backends.locmem.EmailBackend',
+        PORTAL_PUBLIC_URL='http://192.168.70.9:8002/')
     def test_initial_submission_sends_approval_mail_and_opening_backfills_missing_notice(self):
         self.admin.email='movement-admin@example.org';self.admin.save(update_fields=['email'])
         CompanyMailSettings.objects.create(company=self.company,host='smtp.example.org',port=25,security='NONE',
@@ -74,6 +75,9 @@ class MovementReviewRequestTests(TestCase):
         self.assertIn(self.person.display_name,html);self.assertIn(self.group.position,html)
         self.assertIn('Заезд',html);self.assertIn(str(self.camp),html)
         self.assertNotIn('Руководитель проекта ИЛИ Начальник участка',html)
+        self.assertIn('http://192.168.70.9:8002/planning/tasks/',html)
+        self.assertIn('http://192.168.70.9:8002/accounts/approval/action/',html)
+        self.assertNotIn('http://portal.example.org/planning/tasks/',html)
 
         # Existing tasks created before the fix are repaired lazily on open.
         task=WorkTask.objects.get(company=self.company,key__startswith='personnel-movement-approval:')
