@@ -94,7 +94,33 @@ def initial_state_values(row):
             return {'state':'MV','arrival_date':event.stay.arrived_on if event.stay_id else event.date,'departure_date':None}
         if event.kind=='DEPARTURE':
             return {'state':'MO','arrival_date':event.stay.arrived_on if event.stay_id else None,'departure_date':event.date}
+    today=timezone.localdate()
+    active=CampStay.objects.filter(company=row.company,person=row.person,cancelled_at=None,
+        arrived_on__lte=today).filter(Q(departed_on=None)|Q(departed_on__gt=today)).order_by('-arrived_on','-pk').first()
+    if active:return {'state':'MV','arrival_date':active.arrived_on,'departure_date':None}
+    previous=CampStay.objects.filter(company=row.company,person=row.person,cancelled_at=None,
+        departed_on__lte=today).order_by('-departed_on','-pk').first()
+    initial_exit=HousingEvent.objects.filter(company=row.company,person=row.person,kind='DEPARTURE',
+        date__lte=today).select_related('stay').order_by('-date','-pk').first()
+    previous_day=previous.departed_on if previous else None
+    if initial_exit and (previous_day is None or initial_exit.date>=previous_day):
+        return {'state':'MO','arrival_date':initial_exit.stay.arrived_on if initial_exit.stay_id else None,
+            'departure_date':initial_exit.date}
+    if previous:return {'state':'MO','arrival_date':previous.arrived_on,'departure_date':previous.departed_on}
     return {'state':{'МВ':'MV','МО':'MO'}.get(row.status,''),'arrival_date':row.arrival_date,'departure_date':row.departure_date}
+
+
+def _state_event(row,values):
+    if values['state']=='MV':
+        stay=CampStay.objects.filter(company=row.company,person=row.person,cancelled_at=None,
+            arrived_on=values['arrival_date']).filter(Q(departed_on=None)|Q(departed_on__gt=timezone.localdate())).order_by('-pk').first()
+        if stay:
+            return HousingEvent.objects.filter(company=row.company,person=row.person,stay=stay,
+                kind__in=['ARRIVAL','TRANSFER']).order_by('-date','-pk').first()
+    if values['state']=='MO':
+        return HousingEvent.objects.filter(company=row.company,person=row.person,kind='DEPARTURE',
+            date=values['departure_date']).order_by('-pk').first()
+    return None
 
 
 def _store_slot_state(row,state,arrival,departure,event):
@@ -116,8 +142,9 @@ def _correct_recorded_state(user,row,data):
     if latest and latest.pk!=event.pk:
         raise ValidationError('После зафиксированного статуса есть более поздние перемещения. Исправьте их в истории размещений или в разделе «Заезд / выезд».')
     old_state='MV' if event.kind in {'ARRIVAL','TRANSFER'} else 'MO'
-    reason=(f'Исправлен статус назначения: {"На вахте" if old_state=="MV" else "МО"} → '
-            f'{"На вахте" if state=="MV" else "МО"}.')
+    reason=(f'Отменён ошибочный выезд {event.date:%d.%m.%Y}; подтверждён статус «На вахте» с {arrival:%d.%m.%Y} через назначение.'
+        if old_state=='MO' and state=='MV' else
+        f'Исправлен статус назначения: {"На вахте" if old_state=="MV" else "МО"} → {"На вахте" if state=="MV" else "МО"}.')
     with history_actor(user,reason):
         stay=CampStay.objects.select_for_update().filter(pk=event.stay_id,company=user.company).first() if event.stay_id else None
         arrival_event=(HousingEvent.objects.select_for_update().filter(company=user.company,person=row.person,
@@ -166,8 +193,8 @@ def _correct_recorded_state(user,row,data):
                     arrival_event=HousingEvent.objects.create(company=user.company,person=row.person,date=arrival,
                         kind='ARRIVAL',to_camp=stay.camp,stay=stay,comment=reason,recorded_by=user)
             if old_state=='MO':
-                event.kind='CANCEL';event.departure_destination='';event.comment=f'{reason} Ошибочная запись выезда отменена.';event.recorded_by=user
-                event.save(update_fields=['kind','departure_destination','comment','recorded_by','updated_at'])
+                HousingEvent.objects.create(company=user.company,person=row.person,date=timezone.localdate(),kind='CANCEL',
+                    from_camp=stay.camp,stay=stay,comment=reason,recorded_by=user)
             _store_slot_state(row,state,arrival,None,arrival_event)
     return True
 
@@ -176,6 +203,14 @@ def initialize_state(user,row,data,*,enforce_assignment_start=True,allow_correct
     """Record the selected actual state without duplicating an existing state."""
     if not data or not data.get('state'):return False
     state,arrival,departure=data['state'],data.get('arrival_date'),data.get('departure_date')
+    if allow_correction and not row.initial_movement_id:
+        saved=initial_state_values(row)
+        if saved['state']:
+            if (saved['state'],saved['arrival_date'],saved['departure_date'])==(state,arrival,departure):return False
+            event=_state_event(row,saved)
+            if event:
+                row.initial_movement=event;row.save(update_fields=['initial_movement','updated_at'])
+                return _correct_recorded_state(user,row,data)
     if row.initial_movement_id:
         saved=initial_state_values(row)
         if (saved['state'],saved['arrival_date'],saved['departure_date'])==(state,arrival,departure):return False

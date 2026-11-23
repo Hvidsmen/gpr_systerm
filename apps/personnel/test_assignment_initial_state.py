@@ -93,6 +93,31 @@ class AssignmentInitialStateTests(TestCase):
         self.assertEqual(page.context['initial_form']['state'].value(),'MO')
         self.assertEqual(page.context['initial_form']['departure_date'].value(),departure)
 
+    def test_existing_fact_without_assignment_link_is_prefilled_and_can_be_corrected(self):
+        arrival=self.day-timedelta(days=30);departure=self.day-timedelta(days=5);corrected=self.day-timedelta(days=4)
+        slot=StaffingSlot.objects.create(company=self.company,group=self.group,person=self.second_person,
+            planning_position=self.role,construction_object=self.obj,housing_camp=self.a,
+            assigned_from=self.day-timedelta(days=40),assigned_by=self.hr)
+        stay=CampStay.objects.create(company=self.company,person=self.second_person,camp=self.a,
+            arrived_on=arrival,departed_on=departure,recorded_by=self.hr)
+        HousingEvent.objects.create(company=self.company,person=self.second_person,date=arrival,
+            kind='ARRIVAL',to_camp=self.a,stay=stay,recorded_by=self.hr)
+        departure_event=HousingEvent.objects.create(company=self.company,person=self.second_person,date=departure,
+            kind='DEPARTURE',from_camp=self.a,stay=stay,departure_destination='REST',recorded_by=self.hr)
+        url=reverse('personnel:plan_assignment_edit',args=[slot.pk])
+        page=self.client.get(url)
+        self.assertEqual(page.context['initial_form']['state'].value(),'MO')
+        self.assertEqual(page.context['initial_form']['arrival_date'].value(),arrival)
+        self.assertEqual(page.context['initial_form']['departure_date'].value(),departure)
+        response=self.client.post(url,{
+            **self.data,'version':slot.updated_at.isoformat(),
+            'initial-state':'MO','initial-arrival_date':str(arrival),'initial-departure_date':str(corrected),
+        })
+        self.assertEqual(response.status_code,302)
+        slot.refresh_from_db();stay.refresh_from_db();departure_event.refresh_from_db()
+        self.assertEqual(stay.departed_on,corrected);self.assertEqual(departure_event.date,corrected)
+        self.assertEqual(slot.initial_movement,departure_event)
+
     def test_edit_can_correct_arrival_date_and_keeps_fact_history_linked(self):
         original=self.day-timedelta(days=20);corrected=self.day-timedelta(days=25)
         self.assertEqual(self.post('MV',original).status_code,302)
@@ -135,7 +160,8 @@ class AssignmentInitialStateTests(TestCase):
         self.assertEqual(response.status_code,302)
         slot.refresh_from_db();stay.refresh_from_db();old_departure.refresh_from_db()
         self.assertIsNone(stay.departed_on)
-        self.assertEqual(old_departure.kind,'CANCEL')
+        self.assertEqual(old_departure.kind,'DEPARTURE')
+        self.assertTrue(HousingEvent.objects.filter(person=slot.person,kind='CANCEL',stay=stay).exists())
         self.assertEqual(slot.initial_movement.kind,'ARRIVAL')
         self.assertEqual((slot.status,slot.arrival_date,slot.departure_date),('МВ',arrival,None))
 
