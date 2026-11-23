@@ -383,11 +383,16 @@ class MovementReviewRequestTests(TestCase):
 
     def test_email_action_can_decide_one_batch_employee_and_then_all_remaining(self):
         from django.test import Client
-        from apps.accounts.approval_mail import token
+        from django.template.loader import render_to_string
+        from apps.accounts.approval_mail import context,token
         manager=User.objects.create_user(username='batch-mail-manager',company=self.company,
             role=Role.objects.get(code='MANAGER'))
+        perevakhta=User.objects.create_user(username='batch-mail-perevakhta',company=self.company,
+            role=Role.objects.get(code='PEREVAKHTA_SPECIALIST'))
         replace(company=self.company,process='MOVEMENT',stage_code='MANAGER',user=manager,actor=self.admin,
             construction_object=self.obj,camp=self.camp)
+        replace(company=self.company,process='MOVEMENT',stage_code='PEREVAKHTA_SPECIALIST',user=perevakhta,
+            actor=self.admin,construction_object=self.obj,camp=self.camp)
         second_employee=Employee.objects.create(company=self.company,last_name='Почтовый',first_name='Пётр',
             employee_number='review-mail-2',position=self.position)
         second=Person.objects.create(company=self.company,employee=second_employee,
@@ -412,6 +417,19 @@ class MovementReviewRequestTests(TestCase):
         self.assertContains(response,'Решение сохранено.')
         rows[1].refresh_from_db()
         self.assertEqual(rows[1].approval_route['MANAGER']['status'],'APPROVED')
+        review_notice=ApprovalNotice.objects.get(task_id=task.pk,stage_code='PEREVAKHTA_SPECIALIST',
+            intended_user=perevakhta)
+        review_context=context(review_notice,task,self.admin,{})
+        html=render_to_string('accounts/email/approval.html',review_context)
+        text=render_to_string('accounts/email/approval.txt',review_context)
+        self.assertIn('Открыть задание и проверить',html);self.assertIn('Согласование из письма на этом этапе отключено',html)
+        self.assertNotIn('name="decision"',html);self.assertNotIn('decision=approve',html)
+        self.assertIn('ТРЕБУЕТСЯ ПРОВЕРКА В ПОРТАЛЕ',text);self.assertNotIn('Согласовать без входа',text)
+        blocked_url=reverse('accounts:approval_email_action',args=[token(review_notice,self.admin)])
+        blocked=anonymous.post(blocked_url,{'decision':'approve'})
+        self.assertContains(blocked,'Согласование из письма недоступно')
+        for row in rows:
+            row.refresh_from_db();self.assertEqual(row.approval_route['PEREVAKHTA_SPECIALIST']['status'],'PENDING')
 
     def test_my_requests_filter_by_project_camp_employee_and_position(self):
         day=timezone.localdate()

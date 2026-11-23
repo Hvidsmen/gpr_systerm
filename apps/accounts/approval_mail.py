@@ -132,6 +132,7 @@ def context(notice,task,recipient,cfg):
         items=list(schedule.entries.filter(kind='work').values_list('label',flat=True)[:30])
     else:items=[]
     movement=movement_rows(task,notice)
+    portal_review_only=notice.process=='MOVEMENT' and notice.stage_code=='PEREVAKHTA_SPECIALIST'
     for row in movement:
         row['approve_url']=action+'?decision=approve&selected='+str(row['pk'])
         row['reject_url']=action+'?decision=reject&selected='+str(row['pk'])
@@ -139,7 +140,8 @@ def context(notice,task,recipient,cfg):
         'details':details,'items':items,'movement_rows':movement,
         'action_url':action,
         'approve_url':action+'?decision=approve','reject_url':action+'?decision=reject',
-        'portal_url':portal,'test_mode':getattr(settings,'STAGING_MODE',False),'admin_delivery':True}
+        'portal_url':portal,'portal_review_only':portal_review_only,
+        'test_mode':getattr(settings,'STAGING_MODE',False),'admin_delivery':True}
 
 
 def send_notice(pk):
@@ -167,7 +169,8 @@ def send_notice(pk):
             for recipient in recipients:
                 ctx=context(notice,task,recipient,cfg)
                 prefix='[ТЕСТ] ' if getattr(settings,'STAGING_MODE',False) else ''
-                subject=(prefix+'Согласование: '+task.title)[:255]
+                label='Проверить заявки перевахты: ' if ctx['portal_review_only'] else 'Согласование: '
+                subject=(prefix+label+task.title)[:255]
                 message=EmailMultiAlternatives(subject,render_to_string('accounts/email/approval.txt',ctx),
                     invitation_mail.sender(cfg),[recipient.email],connection=conn)
                 message.attach_alternative(render_to_string('accounts/email/approval.html',ctx),'text/html')

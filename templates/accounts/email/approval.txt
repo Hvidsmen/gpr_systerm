@@ -1,10 +1,16 @@
 {% if admin_delivery %}{% if test_mode %}ТЕСТОВОЕ ПИСЬМО. {% endif %}Временная отправка администраторам. Назначенный согласующий: {{ notice.intended_user.full_name }}.
 
-{% endif %}ТРЕБУЕТСЯ РЕШЕНИЕ: {{ task.title }}
+{% endif %}{% if portal_review_only %}ТРЕБУЕТСЯ ПРОВЕРКА В ПОРТАЛЕ: {{ task.title }}
+
+Специалисту перевахты необходимо проверить и при необходимости заполнить данные поездки.
+Согласование из письма на этом этапе отключено.
+Открыть задание и проверить: {{ portal_url }}
+{% else %}ТРЕБУЕТСЯ РЕШЕНИЕ: {{ task.title }}
 
 Согласовать без входа: {{ approve_url }}
 Не согласовать и указать комментарий: {{ reject_url }}
 Открыть согласование в портале: {{ portal_url }}
+{% endif %}
 
 Процесс: {{ process_label }}
 Этап согласования: {{ stage_label }}
@@ -17,7 +23,8 @@
 {% if movement_rows %}{% for row in movement_rows %}• {{ row.employee }} · {{ row.position }}
   {{ row.kind }} · {{ row.reason }} · {{ row.route }} · {{ row.date|date:'d.m.Y' }}
   Решение: {{ row.decision }}
-{% if row.can_decide %}  Согласовать только этого сотрудника: {{ row.approve_url }}
+{% if portal_review_only and row.can_decide %}  Открыть и проверить в портале: {{ portal_url }}
+{% elif row.can_decide %}  Согласовать только этого сотрудника: {{ row.approve_url }}
   Не согласовать только этого сотрудника: {{ row.reject_url }}
 {% endif %}
 {% endfor %}{% else %}{{ task.description|default:task.title }}

@@ -10,11 +10,13 @@ from .models import ApprovalNotice,User
 
 
 def execute(notice,task,actor,decision,comment,selected=None):
+    intended=notice.intended_user
+    if task.status!='OPEN':raise ValidationError('Это согласование уже завершено или заменено.')
+    if notice.process=='MOVEMENT' and notice.stage_code=='PEREVAKHTA_SPECIALIST':
+        raise ValidationError('Специалист перевахты должен проверить заявки и принять решение в портале. Согласование из письма недоступно.')
     approved=decision=='approve'
     if decision not in {'approve','reject'}:raise ValidationError('Выберите решение.')
     if not approved and not comment.strip():raise ValidationError('При несогласовании комментарий обязателен.')
-    intended=notice.intended_user
-    if task.status!='OPEN':raise ValidationError('Это согласование уже завершено или заменено.')
     if notice.process=='MOVEMENT':
         from apps.personnel.departure_workflow import active_route_roles,decide,movement_scope,sync_approval_task
         rows=list(approval_rows_for_task(task).select_for_update().order_by('pk'))
@@ -77,4 +79,5 @@ def action(request,token):
         selected_names=list(approval_rows_for_task(task).filter(pk__in=[value for value in selected if value.isdigit()]).values_list(
             'person__full_name',flat=True))
     return render(request,'accounts/approval_email_action.html',{'notice':notice,'task':task,'decision':decision,
-        'error':error,'selected':selected,'selected_names':selected_names})
+        'error':error,'selected':selected,'selected_names':selected_names,
+        'portal_review_only':notice.process=='MOVEMENT' and notice.stage_code=='PEREVAKHTA_SPECIALIST'})
