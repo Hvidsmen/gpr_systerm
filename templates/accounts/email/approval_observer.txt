@@ -6,13 +6,18 @@
 Открыть согласование в портале: {{ portal_url }}
 
 Процесс: {{ process_label }}
+Этап согласования: {{ stage_label }}
 Назначенный согласующий: {{ notice.intended_user.full_name }} · {{ notice.intended_user.position|default:notice.intended_user.role.name }}
 Объект: {{ task.construction_object|default:'—' }}
 Срок: {{ task.due_date|date:'d.m.Y'|default:'—' }}
 Отправил: {{ task.created_by.full_name|default:'—' }}
 
 Что согласовывается:
-{{ task.description|default:task.title }}
+{% if movement_rows %}{% for row in movement_rows %}• {{ row.employee }} · {{ row.position }}
+  {{ row.kind }} · {{ row.reason }} · {{ row.route }} · {{ row.date|date:'d.m.Y' }}
+  Решение: {{ row.decision }}
+{% endfor %}{% else %}{{ task.description|default:task.title }}
+{% endif %}
 {% for label,value in details %}{{ label }}: {{ value }}
 {% endfor %}{% if items %}
 Работы:

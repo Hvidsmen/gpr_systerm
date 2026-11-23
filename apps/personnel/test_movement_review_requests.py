@@ -68,6 +68,12 @@ class MovementReviewRequestTests(TestCase):
         self.assertEqual(set(notices.values_list('status',flat=True)),{'SENT'})
         self.assertEqual(len(mail.outbox),2)
         self.assertTrue(all(message.to==[self.admin.email] for message in mail.outbox))
+        html=mail.outbox[0].alternatives[0].content
+        self.assertIn('Этап согласования',html)
+        self.assertIn('Сотрудник',html);self.assertIn('Причина',html);self.assertIn('Маршрут',html)
+        self.assertIn(self.person.display_name,html);self.assertIn(self.group.position,html)
+        self.assertIn('Заезд',html);self.assertIn(str(self.camp),html)
+        self.assertNotIn('Руководитель проекта ИЛИ Начальник участка',html)
 
         # Existing tasks created before the fix are repaired lazily on open.
         task=WorkTask.objects.get(company=self.company,key__startswith='personnel-movement-approval:')
