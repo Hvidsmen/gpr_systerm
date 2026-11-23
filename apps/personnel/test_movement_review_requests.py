@@ -427,7 +427,9 @@ class MovementReviewRequestTests(TestCase):
         self.assertIn('ТРЕБУЕТСЯ ПРОВЕРКА В ПОРТАЛЕ',text);self.assertNotIn('Согласовать без входа',text)
         blocked_url=reverse('accounts:approval_email_action',args=[token(review_notice,self.admin)])
         blocked=anonymous.post(blocked_url,{'decision':'approve'})
-        self.assertContains(blocked,'Согласование из письма недоступно')
+        self.assertEqual(blocked.status_code,200)
+        self.assertContains(blocked,'Согласование по ссылке из письма недоступно')
+        self.assertNotContains(blocked,'name="decision"')
         for row in rows:
             row.refresh_from_db();self.assertEqual(row.approval_route['PEREVAKHTA_SPECIALIST']['status'],'PENDING')
 

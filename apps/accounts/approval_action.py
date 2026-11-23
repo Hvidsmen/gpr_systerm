@@ -1,3 +1,5 @@
+import logging
+
 from django.core import signing
 from django.core.exceptions import PermissionDenied,ValidationError
 from django.shortcuts import get_object_or_404,render
@@ -7,6 +9,8 @@ from django.views.decorators.csrf import csrf_exempt
 from .approval_assignments import authorized
 from .approval_mail import load_token
 from .models import ApprovalNotice,User
+
+logger=logging.getLogger(__name__)
 
 
 def execute(notice,task,actor,decision,comment,selected=None):
@@ -66,6 +70,13 @@ def action(request,token):
     actor=User.objects.filter(pk=data.get('actor'),company=notice.company,is_active=True,archived_at__isnull=True).first()
     task=WorkTask.objects.select_related('version','review','schedule','schedule_review','construction_object','created_by').filter(pk=notice.task_id,company=notice.company).first()
     if not actor or not task:return render(request,'accounts/approval_email_action.html',{'error':invalid},status=400)
+    portal_review_only=notice.process=='MOVEMENT' and notice.stage_code=='PEREVAKHTA_SPECIALIST'
+    if portal_review_only:
+        # Legacy messages may still contain approve/reject forms.  Never enter
+        # the decision handler for this stage: the specialist must inspect and
+        # complete the movement data in the authenticated portal first.
+        return render(request,'accounts/approval_email_action.html',{'notice':notice,'task':task,
+            'portal_review_only':True})
     source=request.POST if request.method=='POST' else request.GET
     decision=source.get('decision','');selected=source.getlist('selected')
     error=''
@@ -74,10 +85,12 @@ def action(request,token):
             execute(notice,task,actor,decision,request.POST.get('comment','')[:4000],selected or None)
             return render(request,'accounts/approval_email_action.html',{'success':'Решение сохранено.','task':task,'decision':decision})
         except (ValidationError,PermissionDenied) as exc:error='; '.join(exc.messages) if isinstance(exc,ValidationError) else str(exc)
+        except Exception:
+            logger.exception('Approval email action failed',extra={'notice_id':notice.pk,'task_id':task.pk})
+            error='Не удалось сохранить решение по почтовой ссылке. Откройте согласование в портале.'
     selected_names=[]
     if selected and notice.process=='MOVEMENT':
         selected_names=list(approval_rows_for_task(task).filter(pk__in=[value for value in selected if value.isdigit()]).values_list(
             'person__full_name',flat=True))
     return render(request,'accounts/approval_email_action.html',{'notice':notice,'task':task,'decision':decision,
-        'error':error,'selected':selected,'selected_names':selected_names,
-        'portal_review_only':notice.process=='MOVEMENT' and notice.stage_code=='PEREVAKHTA_SPECIALIST'})
+        'error':error,'selected':selected,'selected_names':selected_names,'portal_review_only':False})
