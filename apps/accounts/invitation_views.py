@@ -80,6 +80,9 @@ def history(request):
 @require_http_methods(['GET','POST'])
 def settings_view(request):
     admin(request)
+    redirect_name = ('accounts:approval_mail_settings'
+                     if request.resolver_match.url_name == 'approval_mail_settings'
+                     else 'accounts:invitation_settings')
     row=CompanyMailSettings.objects.filter(company=request.user.company).first()
     if row is None:
         security='SSL' if settings.EMAIL_USE_SSL else 'STARTTLS' if settings.EMAIL_USE_TLS else 'NONE'
@@ -94,7 +97,7 @@ def settings_view(request):
     if request.method=='POST' and form.is_valid():
         row=form.save(commit=False);row.updated_by=request.user;row.save()
         from apps.audit.models import AuditLog
-        AuditLog.objects.create(user=request.user,action='UPDATE',entity_type='accounts.CompanyMailSettings',entity_id=str(row.pk),new_value={'host':row.host,'port':row.port,'security':row.security,'from_email':row.from_email,'username':row.username,'portal_url':row.portal_url,'password_changed':bool(form.cleaned_data.get('password') or form.cleaned_data.get('clear_password'))},comment='Настройки отправки приглашений; пароль не записывается в журнал')
+        AuditLog.objects.create(user=request.user,action='UPDATE',entity_type='accounts.CompanyMailSettings',entity_id=str(row.pk),new_value={'host':row.host,'port':row.port,'security':row.security,'from_email':row.from_email,'username':row.username,'portal_url':row.portal_url,'password_changed':bool(form.cleaned_data.get('password') or form.cleaned_data.get('clear_password'))},comment='Настройки исходящей почты; пароль не записывается в журнал')
         if request.POST.get('action')=='test':
             cfg,error=invitation_mail.ready(request.user.company)
             if error:messages.error(request,error)
@@ -106,6 +109,9 @@ def settings_view(request):
                     if conn:
                         try:conn.close()
                         except Exception:pass
-        else:messages.success(request,'Настройки исходящей почты сохранены.')
-        return redirect('accounts:invitation_settings')
+        else:
+            from .approval_mail import retry_failed
+            retry_failed(request.user.company)
+            messages.success(request,'Настройки исходящей почты сохранены.')
+        return redirect(redirect_name)
     return render(request,'accounts/invitation_settings.html',{'form':form,'password_saved':bool(row.password_encrypted)})

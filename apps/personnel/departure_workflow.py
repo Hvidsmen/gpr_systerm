@@ -126,8 +126,14 @@ def sync_approval_task(row,user=None):
         roles=set()
         for item in approval_rows(row).filter(status__in=['PENDING_APPROVAL','RETURNED']):roles|=active_route_roles(item)
         target=next(iter(roles)) if len(roles)==1 else 'MOVEMENT_PARALLEL'
-        if task.target_role!=target or task.assigned_to_id:
-            task.target_role=target;task.assigned_to=None;task.save(update_fields=['target_role','assigned_to','updated_at'])
+        from apps.accounts.approval_assignments import assignee
+        owner=assignee(row.company,'MOVEMENT',target,target) if target!='MOVEMENT_PARALLEL' else None
+        if task.target_role!=target or task.assigned_to_id!=(owner.pk if owner else None):
+            task.target_role=target;task.assigned_to=owner;task.save(update_fields=['target_role','assigned_to','updated_at'])
+        from apps.accounts.approval_mail import queue_task
+        for stage in roles:
+            stage_owner=assignee(row.company,'MOVEMENT',stage,stage)
+            if stage_owner:queue_task(task,'MOVEMENT',stage,stage_owner)
     return task
 
 
@@ -196,14 +202,20 @@ def create_approval(row):
 
 
 @transaction.atomic
-def decide(user,row,approved,comment='',sync_task=True):
+def decide(user,row,approved,comment='',sync_task=True,step=None):
     row=MovementReviewRequest.objects.select_for_update().get(pk=row.pk,company=user.company)
     actor_role=role_code(user);route=route_for(row)
     pending=active_route_roles(row)
-    if actor_role!='ADMIN' and actor_role not in pending:raise PermissionDenied('Сейчас решение ожидается от другого участника маршрута.')
+    from apps.accounts.approval_assignments import authorized
+    if step is not None:
+        if step not in pending:raise PermissionDenied('Этот этап уже завершён или ещё не начался.')
+        if actor_role!='ADMIN' and not authorized(user,'MOVEMENT',step,step):raise PermissionDenied('На этом этапе назначен другой согласующий.')
+    elif actor_role!='ADMIN':
+        step=next((code for code,_ in ROUTE if code in pending and authorized(user,'MOVEMENT',code,code)),None)
+        if not step:raise PermissionDenied('Сейчас решение ожидается от другого участника маршрута.')
     if row.status not in {'PENDING_APPROVAL','RETURNED'}:raise ValidationError('Заявка уже обработана или находится на другом этапе.')
     if not approved and not comment.strip():raise ValidationError('При несогласовании укажите причину.')
-    step=actor_role if actor_role!='ADMIN' else next((code for code,_ in ROUTE if code in pending),None)
+    step=step or next((code for code,_ in ROUTE if code in pending),None)
     if not step:raise ValidationError('В маршруте нет этапа, ожидающего решения.')
     if step=='PEREVAKHTA_SPECIALIST' and approved and not travel_details_complete(row):
         raise ValidationError('Сначала заполните обязательные первичные данные поездки. Только после этого можно запустить параллельные согласования.')

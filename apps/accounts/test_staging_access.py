@@ -71,7 +71,7 @@ class StagingAccessTests(TestCase):
             request = SimpleNamespace(resolver_match=SimpleNamespace(namespaces=['accounts'], namespace='accounts', url_name=name))
             request.GET={}
             self.assertEqual(guard.process_view(request, None, (), {}).status_code, 403)
-        for name in ['portal_updates', 'portal_update_status', 'impersonation_start', 'impersonation_stop', 'login', 'logout', 'settings']:
+        for name in ['portal_updates', 'portal_update_status', 'impersonation_start', 'impersonation_stop', 'login', 'logout', 'settings', 'approval_mail_settings']:
             request = SimpleNamespace(resolver_match=SimpleNamespace(namespaces=['accounts'], namespace='accounts', url_name=name))
             request.GET={}
             self.assertIsNone(guard.process_view(request, None, (), {}))

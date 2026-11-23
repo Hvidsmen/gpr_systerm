@@ -1,0 +1,122 @@
+"""Approval email outbox and signed, login-free decision links."""
+from urllib.parse import urljoin
+
+from django.conf import settings
+from django.core import signing
+from django.core.mail import EmailMultiAlternatives
+from django.db import transaction
+from django.db.models import Q
+from django.template.loader import render_to_string
+from django.urls import reverse
+from django.utils import timezone
+
+from . import invitation_mail
+from .invitations import safe_mail_error
+from .models import ApprovalNotice, User
+
+TOKEN_SALT='portal.approval.email.v1'
+TOKEN_MAX_AGE=7*24*60*60
+
+
+def delivery_users(notice):
+    if getattr(settings,'STAGING_MODE',False):
+        return list(User.objects.filter(company=notice.company,is_active=True,archived_at__isnull=True).filter(
+            Q(role__code='ADMIN')|Q(is_superuser=True)).exclude(email='').order_by('pk'))
+    user=notice.intended_user
+    return [user] if user and user.is_active and user.archived_at is None and user.email else []
+
+
+def queue_task(task,process,stage_code,intended_user):
+    if not intended_user or task.status!='OPEN':return None
+    notice,created=ApprovalNotice.objects.get_or_create(company=task.company,process=process,stage_code=stage_code,
+        task_id=task.pk,intended_user=intended_user,defaults={'intended_email':intended_user.email})
+    if created:transaction.on_commit(lambda pk=notice.pk:send_notice(pk))
+    return notice
+
+
+def retry_failed(company):
+    ids=list(ApprovalNotice.objects.filter(company=company,status='FAILED').values_list('pk',flat=True)[:500])
+    if not ids:return 0
+    ApprovalNotice.objects.filter(pk__in=ids,status='FAILED').update(status='PENDING',error='')
+    transaction.on_commit(lambda:[send_notice(pk) for pk in ids])
+    return len(ids)
+
+
+def token(notice,recipient):
+    return signing.dumps({'notice':notice.pk,'actor':recipient.pk,'task':notice.task_id,
+        'process':notice.process,'stage':notice.stage_code,'intended':notice.intended_user_id},salt=TOKEN_SALT,compress=True)
+
+
+def context(notice,task,recipient,cfg):
+    signed=token(notice,recipient)
+    action=urljoin(cfg['portal_url'],reverse('accounts:approval_email_action',args=[signed]))
+    portal=urljoin(cfg['portal_url'],reverse('planning:task_detail',args=[task.pk]))
+    process=dict(ApprovalNotice._meta.get_field('process').choices)[notice.process]
+    details=[]
+    if task.version_id:
+        version=task.version
+        snapshot=version.snapshot or {}
+        resources=snapshot.get('resources',{})
+        details=[('Документ',version.title or f'ГПР · версия {version.version_number}'),
+            ('Период',f'{version.start_date:%d.%m.%Y} — {version.end_date:%d.%m.%Y}'),
+            ('Раунд согласования',str(version.approval_round)),
+            ('Работ',str(len(snapshot.get('works',[])))),
+            ('Строк должностей',str(len(resources.get('labor',[])))),
+            ('Строк техники',str(len(resources.get('equipment',[])))),
+            ('Строк ГСМ',str(len(resources.get('fuel',[]))))]
+        items=[row.get('name') or row.get('label') for row in snapshot.get('works',[])[:30]]
+    elif task.schedule_id:
+        schedule=task.schedule
+        grouped={kind:schedule.entries.filter(kind=kind).count() for kind in ('work','labor','equipment','fuel')}
+        details=[('Документ',schedule.name or 'СМГ'),('Период',schedule.month.strftime('%m.%Y')),
+            ('Вариант',str(schedule.revision)),('Раунд согласования',str(schedule.approval_round)),
+            ('Работ',str(grouped['work'])),('Должностей',str(grouped['labor'])),
+            ('Техники',str(grouped['equipment'])),('ГСМ',str(grouped['fuel']))]
+        items=list(schedule.entries.filter(kind='work').values_list('label',flat=True)[:30])
+    else:items=[]
+    return {'notice':notice,'task':task,'recipient':recipient,'process_label':process,'details':details,'items':items,
+        'action_url':action,
+        'stage_label':task.title,'approve_url':action+'?decision=approve','reject_url':action+'?decision=reject',
+        'portal_url':portal,'test_mode':getattr(settings,'STAGING_MODE',False)}
+
+
+def send_notice(pk):
+    from apps.planning.models import WorkTask
+    try:
+        notice=ApprovalNotice.objects.select_related('company','intended_user__role').get(pk=pk)
+        if notice.status!='PENDING':return
+        if not notice.intended_user_id:
+            ApprovalNotice.objects.filter(pk=pk,status='PENDING').update(status='FAILED',error='Назначенный согласующий удалён.');return
+        task=WorkTask.objects.select_related('construction_object','created_by').filter(pk=notice.task_id,company=notice.company).first()
+        if not task or task.status!='OPEN':
+            ApprovalNotice.objects.filter(pk=pk,status='PENDING').update(status='FAILED',error='Согласование уже не активно.');return
+        recipients=delivery_users(notice)
+        if not recipients:
+            text='У активных администраторов компании не указан email.' if getattr(settings,'STAGING_MODE',False) else 'У назначенного согласующего не указан email.'
+            ApprovalNotice.objects.filter(pk=pk,status='PENDING').update(status='FAILED',error=text);return
+        cfg,error=invitation_mail.ready(notice.company)
+        if error:
+            ApprovalNotice.objects.filter(pk=pk,status='PENDING').update(status='FAILED',error=error);return
+        conn=invitation_mail.connection(cfg);conn.open()
+        delivered=[]
+        try:
+            for recipient in recipients:
+                ctx=context(notice,task,recipient,cfg)
+                prefix='[ТЕСТ] ' if getattr(settings,'STAGING_MODE',False) else ''
+                subject=(prefix+'Согласование: '+task.title)[:255]
+                message=EmailMultiAlternatives(subject,render_to_string('accounts/email/approval.txt',ctx),
+                    invitation_mail.sender(cfg),[recipient.email],connection=conn)
+                message.attach_alternative(render_to_string('accounts/email/approval.html',ctx),'text/html')
+                if message.send()!=1:raise RuntimeError('Почтовый сервер не принял письмо.')
+                delivered.append(recipient.email)
+        finally:
+            try:conn.close()
+            except Exception:pass
+        ApprovalNotice.objects.filter(pk=pk,status='PENDING').update(status='SENT',delivered_to=delivered,
+            sent_at=timezone.now(),error='')
+    except Exception as exc:
+        ApprovalNotice.objects.filter(pk=pk).update(status='FAILED',error=safe_mail_error(exc))
+
+
+def load_token(value):
+    return signing.loads(value,salt=TOKEN_SALT,max_age=TOKEN_MAX_AGE)

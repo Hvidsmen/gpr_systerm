@@ -142,7 +142,8 @@ class TaskDetail(View):
                 row.travel_details_complete=travel_details_complete(row)
                 row.show_travel_details=row.route_steps[2]['status']!='WAITING'
                 row.needs_travel_details='PEREVAKHTA_SPECIALIST' in active_route_roles(row) and not row.travel_details_complete
-                row.can_route_decide=role_code(request.user)=='ADMIN' or role_code(request.user) in active_route_roles(row)
+                from apps.accounts.approval_assignments import authorized
+                row.can_route_decide=role_code(request.user)=='ADMIN' or any(authorized(request.user,'MOVEMENT',stage,stage) for stage in active_route_roles(row))
                 if row.needs_travel_details:row.can_route_decide=False
                 if row.can_route_decide and row.status=='RETURNED':row.status='PENDING_APPROVAL'
                 row.approval_comment=render_to_string('personnel/_movement_approval_route.html',{'row':row})

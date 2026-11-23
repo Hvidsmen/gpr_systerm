@@ -127,6 +127,58 @@ class User(AbstractUser):
     def is_foreman(self):
         return self.has_role('FOREMAN')
 
+
+class ApprovalAssignment(BaseTimestampedModel):
+    """The single portal user responsible for one company approval stage."""
+    PROCESS_CHOICES = [
+        ('MOVEMENT', 'Заявки на заезд и выезд'),
+        ('GPR', 'ГПР'),
+        ('SMG', 'СМГ'),
+    ]
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='approval_assignments')
+    process = models.CharField('Процесс', max_length=20, choices=PROCESS_CHOICES)
+    stage_code = models.CharField('Код этапа', max_length=50)
+    user = models.ForeignKey(User, on_delete=models.PROTECT, related_name='approval_assignments', verbose_name='Согласующий')
+    changed_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+
+    class Meta:
+        ordering = ['process', 'stage_code']
+        constraints = [models.UniqueConstraint(fields=['company', 'process', 'stage_code'], name='unique_company_approval_assignment')]
+
+    def __str__(self):
+        return f'{self.get_process_display()} · {self.stage_code}: {self.user}'
+
+
+class ApprovalAssignmentChange(models.Model):
+    assignment = models.ForeignKey(ApprovalAssignment, on_delete=models.CASCADE, related_name='history')
+    previous_user = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+    new_user = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
+    changed_by = models.ForeignKey(User, null=True, on_delete=models.SET_NULL, related_name='+')
+    reason = models.TextField('Причина замены', blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at', '-pk']
+
+
+class ApprovalNotice(models.Model):
+    STATUS_CHOICES = [('PENDING', 'Ожидает отправки'), ('SENT', 'Отправлено'), ('FAILED', 'Ошибка')]
+    company = models.ForeignKey(Company, on_delete=models.CASCADE, related_name='approval_notices')
+    process = models.CharField(max_length=20, choices=ApprovalAssignment.PROCESS_CHOICES)
+    stage_code = models.CharField(max_length=50)
+    task_id = models.PositiveBigIntegerField(db_index=True)
+    intended_user = models.ForeignKey(User, null=True, on_delete=models.SET_NULL, related_name='intended_approval_notices')
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='PENDING')
+    intended_email = models.EmailField(blank=True)
+    delivered_to = models.JSONField(default=list, blank=True)
+    error = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    sent_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at', '-pk']
+        constraints = [models.UniqueConstraint(fields=['company', 'process', 'stage_code', 'task_id', 'intended_user'], name='unique_approval_notice')]
+
 from django.core.exceptions import ValidationError
 from django.db.models.signals import m2m_changed, pre_save
 from django.dispatch import receiver

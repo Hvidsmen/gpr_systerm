@@ -75,7 +75,7 @@
             <a class="nav-link" href="{% url 'accounts:uat' %}"><i class="bi bi-truck" aria-hidden="true"></i> Интеграция УАТ 1С</a>
             <a class="nav-link" href="{% url 'accounts:one_c_jobs' %}"><i class="bi bi-list-task" aria-hidden="true"></i> Задания обмена 1С</a>
             {% endif %}
-            {% endif %}{% if request.user|may:'accounts:user_list' %}<a class="nav-link" href="{% url 'accounts:user_list' %}" data-paths="/accounts/users/ /accounts/access-groups/ /accounts/ad/ /accounts/view-as/"><i class="bi bi-person-gear" aria-hidden="true"></i> Пользователи и доступ</a>
+            {% endif %}{% if request.user|may:'accounts:user_list' %}<a class="nav-link" href="{% url 'accounts:user_list' %}" data-paths="/accounts/users/ /accounts/access-groups/ /accounts/ad/ /accounts/view-as/"><i class="bi bi-person-gear" aria-hidden="true"></i> Пользователи и доступ</a><a class="nav-link" href="{% url 'accounts:approval_settings' %}" data-paths="/accounts/approval-settings/"><i class="bi bi-person-check" aria-hidden="true"></i> Согласующие</a>
             {% endif %}
             {% if request.user|may:'accounts:training_list' %}<a class="nav-link" href="{% url 'accounts:training_list' %}"><i class="bi bi-mortarboard" aria-hidden="true"></i> Учебные копии</a>{% endif %}
             {% if staging_portal_url %}<a class="nav-link" href="{{ staging_portal_url }}" target="_blank" rel="noopener noreferrer" title="Открыть тестовый портал в новой вкладке"><i class="bi bi-box-arrow-up-right" aria-hidden="true"></i> Тестовый портал</a>{% endif %}

@@ -42,6 +42,10 @@ def transition(version, user, action, comment=''):
     section = dict((r, s) for s, _, r, _ in SECTIONS).get(role, 'CEO')
     if action in {s[3] for s in SECTIONS}:
         section = {a: s for s, _, _, a in SECTIONS}[action]
+    if action in {s[3] for s in SECTIONS} | {'approve','reject'} and role!='ADMIN':
+        from apps.accounts.approval_assignments import authorized
+        expected=dict((s,r) for s,_,r,_ in SECTIONS).get(section,'CEO')
+        if not authorized(user,'GPR',section,expected):raise PermissionDenied('На этом этапе назначен другой согласующий.')
     event = 'APPROVE'
     if action == 'submit':
         if version.status not in ['DRAFT', 'REJECTED']:
@@ -130,10 +134,12 @@ def panel(version, user):
     for section, label, assigned, action in SECTIONS:
         if section in {'SECURITY','SBO'} and version.status in {'APPROVED','COMPLETED'} and section not in approved:continue
         decision = review.decisions.filter(section=section, action='APPROVE').first() if review else None
+        from apps.accounts.approval_assignments import authorized
         sections.append({'label': label, 'decision': decision, 'approved': section in approved and version.status not in ['DRAFT', 'REJECTED'],
-                         'action': action, 'can_approve': submitted and 'ESTIMATE' in approved_sections(review) and role in {assigned, 'ADMIN'} and not decision})
+                         'action': action, 'can_approve': submitted and 'ESTIMATE' in approved_sections(review) and authorized(user,'GPR',section,assigned) and not decision})
+    from apps.accounts.approval_assignments import authorized
     return {'legacy_review': bool(review and review.legacy_approved and version.status not in ['DRAFT', 'REJECTED']), 'approval_sections': sections, 'approval_ready': ready(review),'estimator_ready':bool(estimator_decision),
-            'can_final_approve': submitted and role in {'CEO', 'ADMIN'} and ready(review),
+            'can_final_approve': submitted and authorized(user,'GPR','CEO','CEO') and ready(review),
             'can_return': (submitted and (role=='ADMIN' or role in DEPARTMENT_ROLES and bool(estimator_decision) or role=='CEO' and ready(review))) or version.status=='APPROVED' and role in {'CEO','ADMIN'},
             'can_complete': version.status == 'APPROVED' and role in {'CEO', 'ADMIN'},
             'review_history': version.review_rounds.prefetch_related('decisions').order_by('-number')}

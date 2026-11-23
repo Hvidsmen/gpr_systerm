@@ -90,6 +90,18 @@ class MovementReviewRequestTests(TestCase):
         self.assertEqual(row.status,'PENDING_APPROVAL')
         self.assertEqual(row.approval_route['PEREVAKHTA_SPECIALIST']['status'],'PENDING')
 
+    def test_configured_movement_approver_replaces_other_user_with_same_role(self):
+        from apps.accounts.approval_assignments import replace
+        from .departure_workflow import decide
+        first=User.objects.create_user(username='configured-manager-old',company=self.company,role=Role.objects.get(code='MANAGER'))
+        selected=User.objects.create_user(username='configured-manager-new',company=self.company,role=Role.objects.get(code='MANAGER'))
+        replace(company=self.company,process='MOVEMENT',stage_code='MANAGER',user=selected,actor=self.admin)
+        housing.request_moves(self.personnel,'ARRIVAL',self.camp,timezone.localdate(),[self.person])
+        row=MovementReviewRequest.objects.get()
+        with self.assertRaises(PermissionDenied):decide(first,row,True,'Старый ответственный')
+        decide(selected,row,True,'Назначенный ответственный');row.refresh_from_db()
+        self.assertEqual(row.approval_route['MANAGER']['status'],'APPROVED')
+
     def test_first_gate_cancels_only_after_both_roles_reject(self):
         from .departure_workflow import decide
         manager=User.objects.create_user(username='reject-or-manager',company=self.company,role=Role.objects.get(code='MANAGER'))

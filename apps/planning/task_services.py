@@ -107,7 +107,9 @@ def visible(user):
 def is_executor(user,task):
     if task.key.startswith(('personnel-movement-batch:','personnel-movement-approval:')):
         from apps.personnel.departure_workflow import task_route_roles
-        return role_code(user)=='ADMIN' or role_code(user) in task_route_roles(task)
+        if role_code(user)=='ADMIN':return True
+        from apps.accounts.approval_assignments import authorized
+        return any(authorized(user,'MOVEMENT',stage,stage) for stage in task_route_roles(task))
     return task.assigned_to_id==user.pk or (not task.assigned_to_id and task.target_role==role_code(user)) or role_code(user)=='ADMIN'
 
 
@@ -153,12 +155,16 @@ def sync_version(version):
             state(task,'SUPERSEDED',text='Сначала требуется проверка сметчика.')
     else:
         for section,label,role,_ in DEPARTMENTS:
-            people=list(User.objects.filter(company_id=version.company_id,role__code=role,is_active=True)[:2])
-            task=ensure(version.company,f'approval:{review.pk}:{section}',kind='APPROVAL',title=f'Согласовать план: {label}',target_role=role,assigned_to=people[0] if len(people)==1 else None,created_by=review.submitted_by,version=version,review=review,construction_object_id=version.construction_object_id,due_date=timezone.localdate()+timedelta(days=2),description=f'Раунд {review.number}. Раздел: {label}.')
-            if task.status=='OPEN' and task.assigned_to_id and (not task.assigned_to.is_active or role_code(task.assigned_to)!=role):
-                task.assigned_to=people[0] if len(people)==1 else None;task.save(update_fields=['assigned_to']);event(task,None,'Переназначено','Изменился ответственный по роли.')
+            from apps.accounts.approval_assignments import assignee
+            owner=assignee(version.company,'GPR',section,role)
+            task=ensure(version.company,f'approval:{review.pk}:{section}',kind='APPROVAL',title=f'Согласовать план: {label}',target_role=role,assigned_to=owner,created_by=review.submitted_by,version=version,review=review,construction_object_id=version.construction_object_id,due_date=timezone.localdate()+timedelta(days=2),description=f'Раунд {review.number}. Раздел: {label}.')
+            if task.status=='OPEN' and task.assigned_to_id!=(owner.pk if owner else None):
+                task.assigned_to=owner;task.save(update_fields=['assigned_to']);event(task,None,'Переназначено','Изменился согласующий этапа.')
             if task.status=='SUPERSEDED' and section not in decisions:state(task,'OPEN',text='Проверка сметчика завершена.')
             if section in decisions:state(task,'DONE',decisions[section].actor,decisions[section].comment)
+            if task.status=='OPEN' and owner:
+                from apps.accounts.approval_mail import queue_task
+                queue_task(task,'GPR',section,owner)
     latest=version.estimate_reviews.order_by('-pk').first()
     if latest:
         task=estimate_task(latest)
@@ -171,12 +177,16 @@ def sync_version(version):
     if not ready(review):
         for old in WorkTask.objects.filter(review=review,target_role='CEO',kind='APPROVAL',status__in=ACTIVE):state(old,'SUPERSEDED',text='Требуются согласования всех служб, включая Службу СБО.')
     if ready(review):
-        people=list(User.objects.filter(company_id=version.company_id,role__code='CEO',is_active=True)[:2])
-        task=ensure(version.company,f'approval:{review.pk}:CEO',kind='APPROVAL',title='Утвердить план',target_role='CEO',assigned_to=people[0] if len(people)==1 else None,created_by=review.submitted_by,version=version,review=review,construction_object_id=version.construction_object_id,due_date=timezone.localdate()+timedelta(days=2))
-        if task.status=='OPEN' and task.assigned_to_id and (not task.assigned_to.is_active or role_code(task.assigned_to)!='CEO'):
-            task.assigned_to=people[0] if len(people)==1 else None;task.save(update_fields=['assigned_to']);event(task,None,'Переназначено','Изменился ответственный по роли.')
+        from apps.accounts.approval_assignments import assignee
+        owner=assignee(version.company,'GPR','CEO','CEO')
+        task=ensure(version.company,f'approval:{review.pk}:CEO',kind='APPROVAL',title='Утвердить план',target_role='CEO',assigned_to=owner,created_by=review.submitted_by,version=version,review=review,construction_object_id=version.construction_object_id,due_date=timezone.localdate()+timedelta(days=2))
+        if task.status=='OPEN' and task.assigned_to_id!=(owner.pk if owner else None):
+            task.assigned_to=owner;task.save(update_fields=['assigned_to']);event(task,None,'Переназначено','Изменился согласующий этапа.')
         if task.status=='SUPERSEDED' and 'CEO' not in decisions:state(task,'OPEN',text='Все службы согласовали.')
         if 'CEO' in decisions:state(task,'DONE',decisions['CEO'].actor,decisions['CEO'].comment)
+        if task.status=='OPEN' and owner:
+            from apps.accounts.approval_mail import queue_task
+            queue_task(task,'GPR','CEO',owner)
 
 
 def create_repair(version,actor,comment):

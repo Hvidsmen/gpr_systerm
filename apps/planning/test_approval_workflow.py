@@ -1,6 +1,6 @@
 from copy import deepcopy
 from django.core.exceptions import PermissionDenied, ValidationError
-from django.test import TestCase
+from django.test import Client,TestCase
 from django.urls import reverse
 from apps.accounts.models import User, Role, Company
 from .models import GlobalPlanVersion, GlobalPlanReview, GlobalPlanDecision, WorkMonthAllocation
@@ -69,6 +69,36 @@ class ApprovalWorkflowTests(TestCase):
         with self.assertRaises(ValidationError):
             GlobalPlanService.transition(version, self.approvers['HR_HEAD'], 'approve_hr')
         self.assertEqual(current_review(version).decisions.count(), 3)
+
+    def test_configured_stage_owner_is_the_only_role_user_who_can_decide(self):
+        from apps.accounts.approval_assignments import replace
+        from .task_services import sync_version
+        second=User.objects.create_user(username='configured-hr-approver',company=self.company,
+            role=Role.objects.get(code='HR_HEAD'))
+        replace(company=self.company,process='GPR',stage_code='HR',user=second,actor=self.admin)
+        version=self.submit();sync_version(version)
+        task=version.work_tasks.get(key__endswith=':HR')
+        self.assertEqual(task.assigned_to,second)
+        with self.assertRaises(PermissionDenied):
+            GlobalPlanService.transition(version,self.approvers['HR_HEAD'],'approve_hr')
+        GlobalPlanService.transition(version,second,'approve_hr')
+        self.assertTrue(current_review(version).decisions.filter(section='HR',actor=second).exists())
+
+    def test_signed_email_link_records_decision_without_portal_login(self):
+        from apps.accounts.approval_assignments import replace
+        from apps.accounts.approval_mail import token
+        from apps.accounts.models import ApprovalNotice
+        version=self.submit();owner=self.approvers['HR_HEAD']
+        replace(company=self.company,process='GPR',stage_code='HR',user=owner,actor=self.admin)
+        from .task_services import sync_version
+        sync_version(version);task=version.work_tasks.get(key__endswith=':HR')
+        notice=ApprovalNotice.objects.filter(task_id=task.pk,stage_code='HR',intended_user=owner).first()
+        if notice is None:notice=ApprovalNotice.objects.create(company=self.company,process='GPR',stage_code='HR',task_id=task.pk,intended_user=owner)
+        self.client.logout()
+        response=Client(enforce_csrf_checks=True).post(reverse('accounts:approval_email_action',args=[token(notice,owner)]),
+            {'decision':'approve','comment':'Согласовано из письма'})
+        self.assertContains(response,'Решение сохранено.')
+        self.assertTrue(current_review(version).decisions.filter(section='HR',actor=owner,comment='Согласовано из письма').exists())
 
     def test_every_head_can_return_whole_plan_with_required_reason(self):
         for code in ['PRODUCTION_HEAD', 'HR_HEAD', 'TECH_HEAD', 'SECURITY_HEAD', 'SBO_HEAD']:

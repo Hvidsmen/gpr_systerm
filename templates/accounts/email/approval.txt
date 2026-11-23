@@ -1,0 +1,23 @@
+{% if test_mode %}ТЕСТОВОЕ ПИСЬМО. Фактический согласующий: {{ notice.intended_user.full_name }}.
+
+{% endif %}ТРЕБУЕТСЯ РЕШЕНИЕ: {{ task.title }}
+
+Согласовать без входа: {{ approve_url }}
+Не согласовать и указать комментарий: {{ reject_url }}
+Открыть согласование в портале: {{ portal_url }}
+
+Процесс: {{ process_label }}
+Согласующий: {{ notice.intended_user.full_name }} · {{ notice.intended_user.position|default:notice.intended_user.role.name }}
+Объект: {{ task.construction_object|default:'—' }}
+Срок: {{ task.due_date|date:'d.m.Y'|default:'—' }}
+Отправил: {{ task.created_by.full_name|default:'—' }}
+
+Что согласовывается:
+{{ task.description|default:task.title }}
+{% for label,value in details %}{{ label }}: {{ value }}
+{% endfor %}{% if items %}
+Работы:
+{% for item in items %}• {{ item }}
+{% endfor %}{% endif %}
+
+Решение относится только к указанной версии и этапу. После изменения документа или замены согласующего ссылка перестанет действовать.

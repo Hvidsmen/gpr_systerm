@@ -13,10 +13,15 @@ from .user_archive import bulk_archive
 from . import invitation_views, training_views
 from .fact_period_views import periods as fact_open_periods
 from . import uat_sync_views
+from .approval_views import settings_view as approval_settings
+from .approval_action import action as approval_email_action
 
 app_name = 'accounts'
 
 urlpatterns = [
+    path('approval/action/<str:token>/',approval_email_action,name='approval_email_action'),
+    path('approval-settings/',approval_settings,name='approval_settings'),
+    path('approval-settings/mail/',invitation_views.settings_view,name='approval_mail_settings'),
     path('admin/fact-periods/',fact_open_periods,name='fact_open_periods'),
     path('training/',training_views.groups,name='training_list'),
     path('training/health/',training_views.health,name='training_health'),

@@ -83,12 +83,16 @@ def sync(schedule):
     roles=list(SECTIONS)
     if REQUIRED_SECTIONS<=decisions.keys():roles.append(('CEO','Утверждение СМГ','CEO'))
     for section,label,role in roles:
-        people=list(User.objects.filter(company=schedule.company,is_active=True,role__code=role)[:2])
-        task=ensure(schedule.company,f'smg-approval:{review.pk}:{section}',kind='APPROVAL',title=f'Согласовать дневной СМГ: {label}',assigned_to=people[0] if len(people)==1 else None,target_role=role,created_by=review.submitted_by,schedule=schedule,schedule_review=review,construction_object_id=schedule.construction_object_id,due_date=timezone.localdate()+timedelta(days=2))
+        from apps.accounts.approval_assignments import assignee
+        owner=assignee(schedule.company,'SMG',section,role)
+        task=ensure(schedule.company,f'smg-approval:{review.pk}:{section}',kind='APPROVAL',title=f'Согласовать дневной СМГ: {label}',assigned_to=owner,target_role=role,created_by=review.submitted_by,schedule=schedule,schedule_review=review,construction_object_id=schedule.construction_object_id,due_date=timezone.localdate()+timedelta(days=2))
         if task.status=='SUPERSEDED' and section not in decisions:state(task,'OPEN')
-        if task.status=='OPEN' and task.assigned_to_id and (not task.assigned_to.is_active or role_code(task.assigned_to)!=role):
-            task.assigned_to=people[0] if len(people)==1 else None;task.save(update_fields=['assigned_to'])
+        if task.status=='OPEN' and task.assigned_to_id!=(owner.pk if owner else None):
+            task.assigned_to=owner;task.save(update_fields=['assigned_to'])
         if section in decisions:state(task,'DONE',decisions[section].actor)
+        if task.status=='OPEN' and owner:
+            from apps.accounts.approval_mail import queue_task
+            queue_task(task,'SMG',section,owner)
 
 
 @transaction.atomic
@@ -114,6 +118,10 @@ def transition(user,schedule,action,comment=''):
         if role=='ADMIN':section={**{a:s for s,a in SECTION_ACTIONS.items()},'approve':'CEO'}.get(action,'ADMIN')
         allowed={**{a:roles|{'ADMIN'} for a,roles in ACTION_ROLES.items()},'approve':{'CEO','ADMIN'},'reject':DEPARTMENT_ROLES|{'CEO','ADMIN','ESTIMATOR'}}
         require_roles(user,allowed.get(action,set()))
+        if role!='ADMIN' and section in {s for s,_,_ in SECTIONS}|{'CEO'}:
+            from apps.accounts.approval_assignments import authorized
+            expected=dict((s,r) for s,_,r in SECTIONS).get(section,'CEO')
+            if not authorized(user,'SMG',section,expected):raise PermissionDenied('На этом этапе назначен другой согласующий.')
         if schedule.status!='SUBMITTED' or not review:raise ValidationError('СМГ не находится на согласовании.')
         approved=set(review.decisions.filter(action='APPROVE').values_list('section',flat=True))
         if role=='CEO' and not REQUIRED_SECTIONS<=approved:raise ValidationError('Дождитесь согласования всех служб, включая Службу СБО.')
