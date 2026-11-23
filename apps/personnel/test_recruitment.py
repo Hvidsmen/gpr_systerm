@@ -194,6 +194,7 @@ class RecruitmentTests(TestCase):
         self.client.force_login(self.dispatch)
         page=self.client.get(reverse('personnel:new_employee_arrivals'))
         self.assertContains(page,'Оформить выбранных одной заявкой')
+        self.assertContains(page,'movement-floating-actions',count=1)
         response=self.client.post(reverse('personnel:recruitment_arrival_bulk'),{
             'selected':[candidate.pk for candidate in candidates]})
         preparations=list(ArrivalPreparation.objects.filter(candidate__in=candidates).select_related('movement_request'))

@@ -233,6 +233,7 @@ class MovementRecommendationTests(TestCase):
             response=self.client.get(reverse('personnel:'+route));self.assertEqual(response.status_code,200)
             self.assertContains(response,'data-recommendation-select-all',count=1)
             self.assertContains(response,'aria-label="Выбрать всех сотрудников"',count=1)
+            self.assertContains(response,'movement-floating-actions',count=1)
         arrival=self.client.get(reverse('personnel:arrivals'))
         self.assertContains(arrival,'Выход на МО');self.assertContains(arrival,'Дней на МО');self.assertContains(arrival,'График')
         self.assertContains(arrival,(self.day-timedelta(days=7)).strftime('%d.%m.%Y'));self.assertContains(arrival,'Вахта 60/30')
