@@ -17,7 +17,7 @@ from .services import report
 from . import importer
 
 
-def access(request): require_roles(request.user, {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER'})
+def access(request): require_roles(request.user, {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER','PEREVAKHTA_SPECIALIST'})
 def scoped(request, model):
     access(request)
     return model.objects.filter(company_id=request.user.company_id)

@@ -583,7 +583,7 @@ def request_detail(request,pk):
         else:close_form=bound
     role=role_code(request.user)
     can_manage=not row.completed_at and not row.cancelled_at and (not row.closed_at or row.close_kind=='AUTO') and (
-        role in {'ADMIN','HR_HEAD','RECRUITMENT_HEAD'} or role=='RECRUITER' and row.assigned_to_id==request.user.pk)
+        role in {'ADMIN','HR_HEAD','RECRUITMENT_HEAD','PEREVAKHTA_SPECIALIST'} or role=='RECRUITER' and row.assigned_to_id==request.user.pk)
     return render(request,'personnel/recruitment_detail.html',{**context(request.user),'can_dispatch':role in service.DISPATCH and not row.completed_at,
         'row':row,'progress':service.progress(row),'assignment_form':assignment_form,'close_form':close_form,
         'can_edit_request':role in service.DISPATCH and not row.completed_at and not row.cancelled_at and not row.closed_at,

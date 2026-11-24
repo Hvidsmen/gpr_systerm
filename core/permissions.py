@@ -11,6 +11,7 @@ DISPATCHER_ROLES = {FUEL_WAREHOUSE,'DISPATCHER','PERSONNEL_DISPATCHER','MECHANIZ
 ROLES = DISPATCHER_ROLES | {TRANSPORT_DISPATCHER,'ADMIN', 'PLANNER', 'MANAGER', 'FOREMAN', 'DISPATCHER', 'OBSERVER', 'ESTIMATOR','COMMANDANT'} | GLOBAL_APPROVAL_ROLES
 MOVEMENT_APPROVAL_ROLES={'SITE_CHIEF','PEREVAKHTA_SPECIALIST','DUDINKA_HEAD','DUDINKA_SECURITY_DEPUTY','CHIEF_MECHANIC','PARAMEDIC','PERSONNEL_SPECIALIST','LABOR_ECONOMIST'}
 ROLES |= MOVEMENT_APPROVAL_ROLES
+PEREVAKHTA_SPECIALIST='PEREVAKHTA_SPECIALIST'
 READ_ROLES = {'ADMIN', 'PLANNER', 'MANAGER', 'OBSERVER', 'ESTIMATOR'} | GLOBAL_APPROVAL_ROLES
 PLAN_ROLES = {'ADMIN', 'PLANNER'}
 PERSONNEL_CATALOG_MANAGER = 'PERSONNEL_CATALOG_MANAGER'
@@ -20,8 +21,8 @@ RECRUITER='RECRUITER'
 RECRUITMENT_HEAD='RECRUITMENT_HEAD'
 RECRUITMENT_ROLES={RECRUITER,RECRUITMENT_HEAD}
 ROLES |= CATALOG_MANAGER_ROLES | RECRUITMENT_ROLES
-PERSONNEL_CATALOG_EDIT_ROLES = PLAN_ROLES | {PERSONNEL_CATALOG_MANAGER}
-PERSONNEL_CATALOG_READ_ROLES = READ_ROLES | {PERSONNEL_CATALOG_MANAGER}
+PERSONNEL_CATALOG_EDIT_ROLES = PLAN_ROLES | {PERSONNEL_CATALOG_MANAGER,PEREVAKHTA_SPECIALIST}
+PERSONNEL_CATALOG_READ_ROLES = READ_ROLES | {PERSONNEL_CATALOG_MANAGER,PEREVAKHTA_SPECIALIST}
 EQUIPMENT_CATALOG_EDIT_ROLES = PLAN_ROLES | {EQUIPMENT_CATALOG_MANAGER}
 EQUIPMENT_CATALOG_READ_ROLES = READ_ROLES | {EQUIPMENT_CATALOG_MANAGER,'MECHANIZATION_DISPATCHER'}
 FACT_ROLES = {'ADMIN', 'FOREMAN'} | DISPATCHER_ROLES
@@ -232,11 +233,18 @@ def check_route(user, match, method):
     if namespace == 'resources' and name in {'employee_zup_import','employee_position_report','brigade_zup_employees'}:
         require_roles(user, {'ADMIN'});return
     if namespace=='resources' and name in {'employee_list','employee_detail'}:
-        require_roles(user,READ_ROLES|{'HR_HEAD','PERSONNEL_DISPATCHER','MECHANIZATION_DISPATCHER','ALL_FACT_DISPATCHER','DISPATCHER','COMMANDANT'});return
+        require_roles(user,READ_ROLES|{'HR_HEAD','PERSONNEL_DISPATCHER','PEREVAKHTA_SPECIALIST','MECHANIZATION_DISPATCHER','ALL_FACT_DISPATCHER','DISPATCHER','COMMANDANT'});return
     if namespace=='resources' and name=='employee_phone_update':
-        require_roles(user,{'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER'});return
+        require_roles(user,{'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER','PEREVAKHTA_SPECIALIST'});return
     if namespace == 'resources' and name in {'employee_create', 'employee_update'}:
-        require_roles(user, {'ADMIN', 'HR_HEAD', 'PLANNER'});return
+        require_roles(user, {'ADMIN', 'HR_HEAD', 'PLANNER','PEREVAKHTA_SPECIALIST'});return
+    if namespace=='resources' and name in {
+        'brigade_list','brigade_create','brigade_update','brigade_export','brigade_import','brigade_import_template',
+        'brigade_merge','brigade_batch_merge','brigade_link_employees','brigade_bulk_group','brigade_group_list',
+        'brigade_group_create','brigade_group_update','brigade_group_merge','brigade_macro_group_list',
+        'brigade_macro_group_create','position_list','position_update'}:
+        read=name.endswith(('_list','_export'))
+        require_roles(user,PERSONNEL_CATALOG_READ_ROLES if read else PERSONNEL_CATALOG_EDIT_ROLES);return
     if namespace == 'accounts' and name in {'password_change','access_pending','impersonation_stop'}:
         return
     if namespace == 'accounts' and name in {'uat_waybills', 'uat_repairs', 'uat_vehicles', 'uat_departments', 'uat_journal'}:
@@ -269,22 +277,22 @@ def check_route(user, match, method):
         require_roles(user, READ_ROLES)
         return
     if namespace=='personnel' and name=='camps' and method in {'GET','HEAD'}:
-        require_roles(user,READ_ROLES|{'HR_HEAD','PERSONNEL_DISPATCHER','MECHANIZATION_DISPATCHER','ALL_FACT_DISPATCHER','COMMANDANT'});return
+        require_roles(user,READ_ROLES|{'HR_HEAD','PERSONNEL_DISPATCHER','PEREVAKHTA_SPECIALIST','MECHANIZATION_DISPATCHER','ALL_FACT_DISPATCHER','COMMANDANT'});return
     if namespace=='personnel' and name.startswith('base_city_'):
         from apps.personnel.recruitment import READ
-        managers={'ADMIN','HR_HEAD',RECRUITMENT_HEAD,PERSONNEL_CATALOG_MANAGER}
+        managers={'ADMIN','HR_HEAD',RECRUITMENT_HEAD,PERSONNEL_CATALOG_MANAGER,'PEREVAKHTA_SPECIALIST'}
         require_roles(user,READ|{PERSONNEL_CATALOG_MANAGER} if name=='base_city_list' else managers);return
     if namespace=='personnel' and name=='employee_search' and method in {'GET','HEAD'}:
         # The lodging screen uses the same company-scoped remote employee
         # selector as personnel forms.  Commandants may search employees for
         # accommodation without receiving access to personnel administration.
-        require_roles(user,{'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER','COMMANDANT'});return
+        require_roles(user,{'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER','PEREVAKHTA_SPECIALIST','COMMANDANT'});return
     if namespace=='personnel' and name=='movements':
-        require_roles(user,{'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER'});return
+        require_roles(user,{'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER','PEREVAKHTA_SPECIALIST'});return
     if namespace=='personnel' and name=='movement_review_accept':
         require_roles(user,{'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER','MANAGER'}|MOVEMENT_APPROVAL_ROLES);return
     if namespace == 'personnel':
-        require_roles(user, {'ADMIN', 'HR_HEAD', 'PERSONNEL_DISPATCHER'})
+        require_roles(user, {'ADMIN', 'HR_HEAD', 'PERSONNEL_DISPATCHER','PEREVAKHTA_SPECIALIST'})
         return
     if namespace == 'planning' and name in {'work_resources_gpr','work_resources_smg','work_resource_edit_gpr','work_resource_edit_smg','work_resources_graph_gpr','work_resources_graph_smg','work_resources_links_gpr','work_resources_links_smg','work_resources_save_smg'}:
         require_roles(user, READ_ROLES if method in {'GET','HEAD'} else {'ADMIN','PLANNER','MANAGER'})

@@ -10,7 +10,7 @@ from .models import BaseCity
 from .recruitment import READ
 
 
-MANAGERS={'ADMIN','HR_HEAD','RECRUITMENT_HEAD',PERSONNEL_CATALOG_MANAGER}
+MANAGERS={'ADMIN','HR_HEAD','RECRUITMENT_HEAD','PEREVAKHTA_SPECIALIST',PERSONNEL_CATALOG_MANAGER}
 
 
 def _message(request,callback,*args,success,**kwargs):

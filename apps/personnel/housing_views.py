@@ -36,7 +36,7 @@ def camp_url(camp):return reverse('personnel:housing')+f'?camp={camp.pk}'
 
 def movement_access(request):
     from core.permissions import require_roles
-    require_roles(request.user,{'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER'})
+    require_roles(request.user,{'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER','PEREVAKHTA_SPECIALIST'})
 
 
 def departure_base_city(request,employee):
@@ -80,7 +80,7 @@ def remove_from_dispatch(request,pk):
 @login_required
 def camps(request):
     from core.permissions import require_roles,READ_ROLES
-    require_roles(request.user,READ_ROLES|{'HR_HEAD','PERSONNEL_DISPATCHER','MECHANIZATION_DISPATCHER','ALL_FACT_DISPATCHER'})
+    require_roles(request.user,READ_ROLES|{'HR_HEAD','PERSONNEL_DISPATCHER','PEREVAKHTA_SPECIALIST','MECHANIZATION_DISPATCHER','ALL_FACT_DISPATCHER'})
     qs=Camp.objects.filter(company=request.user.company).prefetch_related('objects_served')
     query=request.GET.get('q','').strip()
     if query:qs=qs.filter(Q(name__icontains=query)|Q(address__icontains=query)|Q(objects_served__name__icontains=query)).distinct()
@@ -516,7 +516,7 @@ def review_request_context(request):
         open_order=Case(When(status='OPEN',then=Value(0)),default=Value(1),output_field=IntegerField())).order_by('cancelled_order','open_order',*ordering)[:1000])
     user_role=role_code(request.user)
     for row in rows:
-        row.can_cancel=user_role in {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER'} and not (user_role=='PERSONNEL_DISPATCHER' and row.has_approved_stage()) and row.status not in {'AT_HUB','EN_ROUTE','COMPLETED','CANCELLED'} and not row.event_id and not row.hub_arrived_on
+        row.can_cancel=user_role in {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER','PEREVAKHTA_SPECIALIST'} and not (user_role=='PERSONNEL_DISPATCHER' and row.has_approved_stage()) and row.status not in {'AT_HUB','EN_ROUTE','COMPLETED','CANCELLED'} and not row.event_id and not row.hub_arrived_on
         row.can_delete=user_role=='ADMIN' and row.status=='CANCELLED' and not row.event_id and not row.hub_arrived_on and not row.hub_departed_on and not row.final_arrived_on
     dispatcher_rows=[row for row in rows if row.source=='DISPATCHER']
     excel_rows=[row for row in rows if row.source=='EXCEL' and row.status not in {'COMPLETED','ACCEPTED','CANCELLED'}]
@@ -611,7 +611,7 @@ def movement_status_summary_data(company,day,project_id=None,camp_id=None,source
 def movement_position_summary(request):
     from core.permissions import require_roles
     from apps.projects.models import Project
-    require_roles(request.user,{'ADMIN','HR_HEAD'})
+    require_roles(request.user,{'ADMIN','HR_HEAD','PEREVAKHTA_SPECIALIST'})
     try:day=forms.DateField().clean(request.GET.get('date') or timezone.localdate())
     except ValidationError:day=timezone.localdate()
     raw_project=request.GET.get('project','');project_id=int(raw_project) if raw_project.isdigit() else None
@@ -651,7 +651,7 @@ def movement_position_summary(request):
 @login_required
 def movement_reviews(request):
     from core.permissions import require_roles
-    require_roles(request.user,{'ADMIN','HR_HEAD'})
+    require_roles(request.user,{'ADMIN','HR_HEAD','PEREVAKHTA_SPECIALIST'})
     result=None
     if request.method=='POST' and request.POST.get('review_action')=='import_excel':
         uploaded=request.FILES.get('movement_excel')
@@ -669,7 +669,7 @@ def movement_reviews(request):
 @require_http_methods(['GET','POST'])
 def movement_excel_sites(request):
     from core.permissions import require_roles
-    require_roles(request.user,{'ADMIN','HR_HEAD'})
+    require_roles(request.user,{'ADMIN','HR_HEAD','PEREVAKHTA_SPECIALIST'})
     action=request.POST.get('action','') if request.method=='POST' else ''
     mapping_id=((request.POST.get('mapping_id') if request.method=='POST' else request.GET.get('edit','')) or '').strip()
     if action=='bulk_assign':mapping_id=''
@@ -749,7 +749,7 @@ def movement_excel_sites(request):
 @require_http_methods(['POST'])
 def movement_excel_site_delete(request,pk):
     from core.permissions import require_roles
-    require_roles(request.user,{'ADMIN','HR_HEAD'})
+    require_roles(request.user,{'ADMIN','HR_HEAD','PEREVAKHTA_SPECIALIST'})
     mapping=get_object_or_404(MovementExcelSiteMapping,company=request.user.company,pk=pk)
     label=mapping.source_site
     from apps.audit.models import AuditLog
@@ -784,7 +784,7 @@ def movement_review_accept(request,pk):
     route=route_for(row);own_route=route.get(user_role,{}).get('status') not in {None,'WAITING'}
     functional_access=(user_role=='PEREVAKHTA_SPECIALIST' and row.status in {'PEREVAKHTA','AT_HUB','EN_ROUTE'} or
         user_role=='PERSONNEL_SPECIALIST' and row.kind=='ARRIVAL' and row.employment_kind=='NEW' and row.status=='AT_HUB')
-    allowed=(user_role in {'ADMIN','HR_HEAD'} or row.requested_by_id==request.user.pk or own_route or
+    allowed=(user_role in {'ADMIN','HR_HEAD','PEREVAKHTA_SPECIALIST'} or row.requested_by_id==request.user.pk or own_route or
         user_role in active_route_roles(row) or functional_access)
     if not allowed:raise PermissionDenied('Эта заявка не находится на вашем этапе и недоступна для просмотра.')
     if row.status=='OPEN' and row.approval_batch and hasattr(row,'recruitment_arrival'):
@@ -880,13 +880,13 @@ def movement_review_accept(request,pk):
         current=object_id;seen=set()
         while current and current not in seen:
             seen.add(current);pairs.setdefault(str(current),set()).add(camp_id);current=tree.get(current)
-    can_cancel_request=user_role in {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER'} and not (user_role=='PERSONNEL_DISPATCHER' and row.has_approved_stage()) and row.status not in {'AT_HUB','EN_ROUTE','COMPLETED','CANCELLED'} and not row.event_id and not row.hub_arrived_on
+    can_cancel_request=user_role in {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER','PEREVAKHTA_SPECIALIST'} and not (user_role=='PERSONNEL_DISPATCHER' and row.has_approved_stage()) and row.status not in {'AT_HUB','EN_ROUTE','COMPLETED','CANCELLED'} and not row.event_id and not row.hub_arrived_on
     can_delete_request=user_role=='ADMIN' and row.status=='CANCELLED' and not row.event_id and not row.hub_arrived_on and not row.hub_departed_on and not row.final_arrived_on
     can_manage_workflow=(user_role in {'ADMIN','HR_HEAD','PEREVAKHTA_SPECIALIST'} or
         user_role=='PERSONNEL_DISPATCHER' and row.kind=='ARRIVAL' and row.status=='EN_ROUTE') and not (row.status=='PEREVAKHTA' and not details_complete)
     needs_zup_registration=row.kind=='ARRIVAL' and row.employment_kind=='NEW' and row.status=='AT_HUB' and not row.person.employee_id
     registration_form=NewEmployeeRegistrationForm(company=request.user.company,initial={'phone':row.phone}) if needs_zup_registration else None
-    can_register_employee=needs_zup_registration and user_role in {'ADMIN','HR_HEAD','PERSONNEL_SPECIALIST'}
+    can_register_employee=needs_zup_registration and user_role in {'ADMIN','HR_HEAD','PERSONNEL_SPECIALIST','PEREVAKHTA_SPECIALIST'}
     from .departure_workflow import route_summary
     return render(request,'personnel/movement_review.html',{'row':row,'form':form,'edit_mode':edit_mode,'perevakhta_data_stage':perevakhta_data_stage,'travel_details_complete':details_complete,'approval_route_steps':route_summary(row),'workflow_today':timezone.localdate(),'can_manage_workflow':can_manage_workflow,'can_cancel_request':can_cancel_request,'can_delete_request':can_delete_request,
         'needs_zup_registration':needs_zup_registration,'can_register_employee':can_register_employee,'registration_form':registration_form,
@@ -1285,7 +1285,7 @@ def my_movement_requests(request):
         history_page=None
     grouped=OrderedDict();filtered_rows=[]
     for row in rows_for_groups:
-        row.can_cancel=request_role in {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER'} and not row.has_approved_stage() and row.status not in {'AT_HUB','EN_ROUTE','COMPLETED','CANCELLED'} and not row.event_id and not row.hub_arrived_on
+        row.can_cancel=request_role in {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER','PEREVAKHTA_SPECIALIST'} and not row.has_approved_stage() and row.status not in {'AT_HUB','EN_ROUTE','COMPLETED','CANCELLED'} and not row.event_id and not row.hub_arrived_on
         row.can_delete=False
         filtered_rows.append(row)
         key=str(row.approval_batch) if row.approval_batch else f'row-{row.pk}'

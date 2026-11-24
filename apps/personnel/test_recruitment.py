@@ -994,7 +994,19 @@ class RecruitmentTests(TestCase):
         self.assertTrue(response.url.startswith(edit_url));self.assertEqual(arrival.requested_by,self.perevakhta)
         self.assertContains(self.client.get(edit_url),'Общие данные для всех сотрудников')
         self.assertContains(self.client.get(reverse('personnel:my_movement_requests')),'Готовый для перевахты')
-        self.assertEqual(self.client.get(reverse('personnel:recruitment_create')).status_code,403)
+        personnel_page=self.client.get(reverse('personnel:housing'))
+        for label in ('Диспетчерская','Перевахта','Банк сотрудников','Справочник рекрутеров',
+                'Базовые города','Сотрудники','Должности'):
+            with self.subTest(menu=label):self.assertContains(personnel_page,label)
+        for name in ('personnel:housing','personnel:movement_reviews','personnel:movement_position_summary',
+                'personnel:camp_create','personnel:recruitment_create','personnel:recruitment_specialist_create',
+                'personnel:base_city_list','resources:employee_list','resources:employee_create',
+                'resources:brigade_list','resources:brigade_create','resources:position_list'):
+            with self.subTest(route=name):self.assertEqual(self.client.get(reverse(name),follow=True).status_code,200)
+        self.assertEqual(self.client.post(reverse('personnel:base_city_create'),{'name':'Новый город перевахты'}).status_code,302)
+        self.assertTrue(BaseCity.objects.filter(company=self.company,name='Новый город перевахты').exists())
+        self.assertEqual(self.client.get(reverse('personnel:admin_cleanup')).status_code,403)
+        self.assertEqual(self.client.get(reverse('resources:employee_zup_import')).status_code,403)
 
     def test_shop_compares_position_plan_with_every_funnel_tab_and_exact_request(self):
         from .models import TalentPoolCandidate

@@ -154,7 +154,7 @@ def sync_approval_task(row,user=None):
 def cancel_request(user,row,reason):
     row=MovementReviewRequest.objects.select_for_update().get(pk=row.pk,company=user.company)
     role=role_code(user)
-    if role not in {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER'}:raise PermissionDenied('Отмена заявки недоступна для вашей роли.')
+    if role not in {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER','PEREVAKHTA_SPECIALIST'}:raise PermissionDenied('Отмена заявки недоступна для вашей роли.')
     if role=='PERSONNEL_DISPATCHER' and row.has_approved_stage():
         raise ValidationError('Диспетчер может отменить заявку только до первого согласования.')
     if row.status=='OPEN' and row.approval_batch and ArrivalPreparation.objects.filter(movement_request=row).exists():
@@ -315,7 +315,7 @@ def decide_many(user,task,ids,approved,comment='',all_pending=False,comments=Non
 def resubmit(user,row):
     row=MovementReviewRequest.objects.select_for_update().get(pk=row.pk,company=user.company)
     if row.status!='RETURNED':raise ValidationError('На повторное согласование можно отправить только возвращённую заявку.')
-    if role_code(user) not in {'ADMIN','PERSONNEL_DISPATCHER','HR_HEAD'}:raise PermissionDenied
+    if role_code(user) not in {'ADMIN','PERSONNEL_DISPATCHER','HR_HEAD','PEREVAKHTA_SPECIALIST'}:raise PermissionDenied
     route=route_for(row)
     for code,data in route.items():
         if data.get('status')=='RETURNED':data['status']='PENDING'
@@ -379,7 +379,7 @@ def update_hub(user,row,*,tickets_ready=False,ticket_cost=None,ticket_document=N
 def register_new_employee(user,row,*,employee_number,position,schedule,phone):
     from apps.resources.models import Employee
     row=MovementReviewRequest.objects.select_for_update().select_related('person__employee').get(pk=row.pk,company=user.company)
-    if role_code(user) not in {'ADMIN','HR_HEAD','PERSONNEL_SPECIALIST'}:raise PermissionDenied('Оформление нового сотрудника выполняет специалист по персоналу.')
+    if role_code(user) not in {'ADMIN','HR_HEAD','PERSONNEL_SPECIALIST','PEREVAKHTA_SPECIALIST'}:raise PermissionDenied('Оформление нового сотрудника выполняет специалист по персоналу.')
     if row.kind!='ARRIVAL' or row.employment_kind!='NEW' or row.status!='AT_HUB':raise ValidationError('Оформление в ЗУП доступно после прибытия нового сотрудника в ОП Дудинка.')
     if row.person.employee_id:return row.person.employee
     number=employee_number.strip();phone=phone.strip()

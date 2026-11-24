@@ -20,7 +20,7 @@ def can_edit_movement_day(user,day,*,today=None):
     today=today or timezone.localdate()
     if day is None or day>today:return False
     from core.permissions import role_code
-    if role_code(user) in {'ADMIN','PERSONNEL_DISPATCHER'}:
+    if role_code(user) in {'ADMIN','PERSONNEL_DISPATCHER','PEREVAKHTA_SPECIALIST'}:
         return day>=today-timedelta(days=MOVEMENT_BACKDATE_DAYS) or role_code(user)=='ADMIN'
     from core.fact_edit_window import can_edit_fact_day
     return can_edit_fact_day(user,day,today=today)
