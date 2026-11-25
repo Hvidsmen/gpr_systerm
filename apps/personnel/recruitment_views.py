@@ -233,7 +233,8 @@ def request_list(request,recruitment_page='bank'):
     if selected_object_ids:
         rows=rows.filter(Q(construction_object_id__in=selected_object_ids)|Q(candidates__pool_candidate__construction_object_id__in=selected_object_ids)).distinct()
     if selected_camp_ids:rows=rows.filter(candidates__pool_candidate__camp_id__in=selected_camp_ids).distinct()
-    if request.GET.get('mine')=='1':rows=rows.filter(assigned_to=request.user)
+    only_mine=request.GET.get('mine')=='1'
+    if only_mine:rows=rows.filter(assigned_to=request.user)
     state=request.GET.get('state','active')
     if state=='cancelled':rows=rows.filter(cancelled_at__isnull=False)
     elif state=='completed':rows=rows.filter(cancelled_at__isnull=True).filter(
@@ -255,6 +256,12 @@ def request_list(request,recruitment_page='bank'):
         candidates=candidates.filter(Q(construction_object_id__in=selected_object_ids)|
             Q(vacancy_candidates__request__construction_object_id__in=selected_object_ids)).distinct()
     if selected_camp_ids:candidates=candidates.filter(camp_id__in=selected_camp_ids)
+    if only_mine:
+        candidates=candidates.filter(
+            Q(responsible_hr__user=request.user)|
+            Q(vacancy_candidates__request_id__in=rows.values('pk'))|
+            Q(created_by=request.user,responsible_hr__isnull=True)
+        ).distinct()
     stage_options=list(TalentPoolCandidate._meta.get_field('stage').choices)
     valid_stages={value for value,_ in stage_options}
     selected_stage_values=sorted({value for value in request.GET.getlist('stage') if value in valid_stages})

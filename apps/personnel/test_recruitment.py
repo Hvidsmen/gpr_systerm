@@ -741,6 +741,25 @@ class RecruitmentTests(TestCase):
         self.assertEqual(len(second.context['rows']),5)
         self.assertEqual(second.context['rows'][0].full_name,'Кандидат страницы 051')
         self.assertContains(second,'Страница 2 из 2')
+    def test_only_mine_filters_funnel_candidates_by_hr_creator_and_assigned_request(self):
+        from .models import RecruitmentSpecialist,TalentPoolCandidate
+        mine_hr=RecruitmentSpecialist.objects.create(company=self.company,name='Мой HR',user=self.recruiter)
+        other_hr=RecruitmentSpecialist.objects.create(company=self.company,name='Другой HR',user=self.recruiter2)
+        mine_by_hr=TalentPoolCandidate.objects.create(company=self.company,full_name='Мой по ответственному',
+            responsible_hr=mine_hr,created_by=self.recruiter2)
+        mine_created=TalentPoolCandidate.objects.create(company=self.company,full_name='Мой созданный',created_by=self.recruiter)
+        mine_by_request=TalentPoolCandidate.objects.create(company=self.company,full_name='Мой по заявке',created_by=self.recruiter2)
+        other=TalentPoolCandidate.objects.create(company=self.company,full_name='Чужой кандидат',
+            responsible_hr=other_hr,created_by=self.recruiter2)
+        request_row=self.row();service.assign_request(self.hr_head,request_row.pk,self.recruiter,request_row.revision)
+        RecruitmentCandidate.objects.create(company=self.company,request=request_row,pool_candidate=mine_by_request,
+            full_name=mine_by_request.full_name,created_by=self.recruiter2)
+        self.client.force_login(self.recruiter)
+        page=self.client.get(reverse('personnel:recruitment_list'),{'mine':'1'})
+        self.assertEqual(page.context['candidate_total'],3)
+        for candidate in (mine_by_hr,mine_created,mine_by_request):self.assertContains(page,candidate.full_name)
+        self.assertNotContains(page,other.full_name)
+        self.assertContains(page,'name="mine" value="1" checked',html=False)
     def test_funnel_positions_are_paginated_without_hiding_candidate_cards(self):
         from .models import TalentPoolCandidate
         positions=Position.objects.bulk_create([
