@@ -32,6 +32,7 @@ FUNNEL_GROUPS=[
     ('approved','Не заехали',{'ARRIVAL_APPROVED'}),
     ('arrived','Заехали',{'ARRIVED'}),
     ('employed','Трудоустроены',{'EMPLOYED'}),
+    ('dismissed','Уволены',{'DISMISSED'}),
     ('rejected','Отказники',RECRUITMENT_TERMINAL_STAGES),
 ]
 

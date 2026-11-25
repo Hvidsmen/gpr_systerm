@@ -95,6 +95,18 @@ class RecruitmentTests(TestCase):
         self.assertEqual(groups['Магазин'],0);self.assertEqual(groups['Трудоустроены'],1)
         response=self.client.post(reverse('personnel:recruitment_candidate_stage',args=[candidate.pk]),{'stage':'SCREENING'})
         self.assertEqual(response.status_code,400);candidate.refresh_from_db();self.assertEqual(candidate.stage,'EMPLOYED')
+        employee.is_active=False;employee.zup_card={'dismissal_date':'2026-11-25'}
+        employee.save(update_fields=['is_active','zup_card'])
+        self.assertEqual(reconcile_company(self.company,self.recruiter),{'linked':0,'ambiguous':0})
+        candidate.refresh_from_db();self.assertEqual(candidate.stage,'DISMISSED');self.assertFalse(candidate.is_active)
+        self.assertTrue(TalentPoolStageEvent.objects.filter(candidate=candidate,from_stage='EMPLOYED',to_stage='DISMISSED',
+            note__contains='уволен 2026-11-25').exists())
+        dismissed_page=self.client.get(reverse('personnel:recruitment_list'),{'candidate_stage':'dismissed'})
+        dismissed_groups={row['label']:row['count'] for row in dismissed_page.context['funnel_groups']}
+        self.assertEqual(dismissed_groups['Уволены'],1);self.assertContains(dismissed_page,candidate.full_name)
+        employee.is_active=True;employee.save(update_fields=['is_active'])
+        self.assertEqual(reconcile_company(self.company,self.recruiter),{'linked':0,'ambiguous':0})
+        candidate.refresh_from_db();self.assertEqual(candidate.stage,'EMPLOYED')
 
     def test_zup_employment_does_not_guess_between_duplicate_candidate_cards(self):
         from .recruitment_employment import REVIEW_KEY,reconcile_company
@@ -1288,7 +1300,23 @@ class RecruitmentTests(TestCase):
         pool.refresh_from_db();self.assertEqual(pool.stage,'MANAGER_APPROVAL')
         inline=self.client.get(reverse('personnel:recruitment_candidate_inline',args=[pool.pk]))
         self.assertContains(inline,'Этап 1 из 5');self.assertContains(inline,'Просрочено на 2 дн.')
-        self.assertContains(inline,'Этап выполнен → Направлен на согласование в СЭБ')
+        self.assertContains(inline,'Этап выполнен → На СБ')
+
+    def test_requested_bank_stages_are_available_and_blacklist_is_manual(self):
+        from .models import TalentPoolCandidate
+        labels=dict(TalentPoolCandidate._meta.get_field('stage').choices)
+        self.assertEqual({code:labels[code] for code in ('EMPLOYED','DISMISSED','MEDICAL_DOCUMENTS','SECURITY_CHECK',
+            'PASS_PROCESSING','READY','BLACKLIST')},{
+            'EMPLOYED':'Трудоустроен','DISMISSED':'Уволен','MEDICAL_DOCUMENTS':'На МК','SECURITY_CHECK':'На СБ',
+            'PASS_PROCESSING':'На пропуске','READY':'Готов к заезду','BLACKLIST':'Черный список'})
+        pool=TalentPoolCandidate.objects.create(company=self.company,full_name='Кандидат Черного списка',stage='SELECTED',
+            position=self.position,construction_object=self.obj,created_by=self.recruiter)
+        self.client.force_login(self.recruiter)
+        response=self.client.post(reverse('personnel:recruitment_candidate_stage',args=[pool.pk]),
+            {'stage':'BLACKLIST','note':'Подтверждено службой безопасности'})
+        self.assertEqual(response.status_code,200)
+        pool.refresh_from_db();self.assertEqual(pool.stage,'BLACKLIST');self.assertFalse(pool.is_active)
+        self.assertTrue(TalentPoolStageEvent.objects.filter(candidate=pool,to_stage='BLACKLIST').exists())
 
     def test_medical_stage_deadline_counts_working_days(self):
         from .recruitment_stage_flow import stage_status

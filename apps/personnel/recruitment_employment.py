@@ -73,6 +73,23 @@ def link_candidate(candidate,employee,actor,method):
     return candidate
 
 
+def sync_linked_stage(candidate,actor):
+    """Mirror the authoritative active/dismissed state of a linked ZUP card."""
+    employee=candidate.employed_employee
+    if not employee:return False
+    target='EMPLOYED' if employee.is_active else 'DISMISSED'
+    if candidate.stage==target and not candidate.is_active:return False
+    previous=candidate.stage;candidate.stage=target;candidate.is_active=False
+    candidate.save(update_fields=['stage','is_active','updated_at'])
+    if previous!=target:
+        dismissal=(employee.zup_card or {}).get('dismissal_date')
+        note=('Автоматически по данным ЗУП: сотрудник снова действует.' if target=='EMPLOYED' else
+            'Автоматически по данным ЗУП: сотрудник уволен'+(f' {dismissal}.' if dismissal else '.'))
+        TalentPoolStageEvent.objects.create(company=candidate.company,candidate=candidate,from_stage=previous,
+            to_stage=target,actor=actor,note=note)
+    return True
+
+
 def remove_employee_from_other_reviews(company,employee_id,except_candidate_id):
     """After a manual choice, keep only still possible choices on duplicate cards."""
     possible=TalentPoolCandidate.objects.filter(company=company,employed_employee__isnull=True).exclude(pk=except_candidate_id).values_list('pk','source_data')
@@ -92,7 +109,10 @@ def reconcile_company(company,actor):
     """Move unambiguous ZUP matches and retain ambiguous choices for manual review."""
     employees=list(Employee.objects.filter(company=company,is_active=True).exclude(zup_ref='').order_by('pk'))
     employee_by_id={row.pk:row for row in employees}
-    candidates=list(TalentPoolCandidate.objects.select_for_update().filter(company=company).order_by('pk'))
+    candidates=list(TalentPoolCandidate.objects.select_for_update().filter(company=company).select_related(
+        'company','employed_employee').order_by('pk'))
+    for candidate in candidates:
+        if candidate.employed_employee_id:sync_linked_stage(candidate,actor)
     already={row.employed_employee_id for row in candidates if row.employed_employee_id}
     proposals={};reviews={};ambiguous_groups=0
 

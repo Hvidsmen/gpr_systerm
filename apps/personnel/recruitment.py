@@ -200,7 +200,7 @@ def ensure_pool_candidate(user,row,candidate,chosen=None):
 def sync_pool_candidate(candidate,stage=None):
     if not candidate.pool_candidate_id:return
     pool=candidate.pool_candidate;stage=stage or candidate.status
-    if pool.employed_employee_id:stage='EMPLOYED'
+    if pool.employed_employee_id:stage='EMPLOYED' if pool.employed_employee.is_active else 'DISMISSED'
     pool.stage=stage
     pool.full_name=candidate.full_name
     if candidate.phone:pool.phone=candidate.phone

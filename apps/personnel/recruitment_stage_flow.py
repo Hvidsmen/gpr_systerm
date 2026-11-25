@@ -29,7 +29,7 @@ STEP_CONFIRMATIONS={
         ('pass_ready','pass_ready_on','готовый пропуск'),
     ),
 }
-MANUAL_EXIT_STAGES={'RESERVE','REJECTED','WITHDRAWN','NOT_REQUIRED','NO_SHOW'}
+MANUAL_EXIT_STAGES={'RESERVE','REJECTED','WITHDRAWN','NOT_REQUIRED','NO_SHOW','BLACKLIST'}
 
 
 def stage_from_confirmation_values(manager,security,medical,pass_documents,pass_ready):

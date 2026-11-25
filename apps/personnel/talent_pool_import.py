@@ -36,8 +36,8 @@ PROFILE_KEYS={'position','construction_site','birth_date','passport','phone','ma
     'medical_exam','pass_documents','base_city','readiness','dudinka_arrival','responsible_hr','agency','notes'}
 STAGE_ORDER={'NEW':0,'SCREENING':1,'HR_INTERVIEW':2,'MANAGER_APPROVAL':3,'SECURITY_CHECK':4,
     'MEDICAL_DOCUMENTS':5,'PASS_PROCESSING':6,'SELECTED':7,'READY':8,'TRANSFERRED':9,
-    'ARRIVAL_APPROVED':10,'ARRIVED':11,'EMPLOYED':12,'RESERVE':7,'REJECTED':13,'WITHDRAWN':13,
-    'NOT_REQUIRED':13,'NO_SHOW':13}
+    'ARRIVAL_APPROVED':10,'ARRIVED':11,'EMPLOYED':12,'DISMISSED':13,'RESERVE':7,'REJECTED':14,'WITHDRAWN':14,
+    'NOT_REQUIRED':14,'NO_SHOW':14,'BLACKLIST':14}
 STAGE_LABELS=dict(RECRUITMENT_STAGES)
 
 

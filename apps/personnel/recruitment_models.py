@@ -16,23 +16,25 @@ RECRUITMENT_STAGES = [
     ('SCREENING','На рассмотрении'),
     ('HR_INTERVIEW','Собеседование HR'),
     ('MANAGER_APPROVAL','Направлен на согласование Заказчику'),
-    ('SECURITY_CHECK','Направлен на согласование в СЭБ'),
-    ('MEDICAL_DOCUMENTS','Направлен на медкомиссию'),
-    ('PASS_PROCESSING','Направлен на пропуск'),
+    ('SECURITY_CHECK','На СБ'),
+    ('MEDICAL_DOCUMENTS','На МК'),
+    ('PASS_PROCESSING','На пропуске'),
     ('SELECTED','Отобран'),
     ('READY','Готов к заезду'),
     ('TRANSFERRED','Поставлен на заезд'),
     ('ARRIVAL_APPROVED','Заезд согласован'),
     ('ARRIVED','Заехал'),
     ('EMPLOYED','Трудоустроен'),
+    ('DISMISSED','Уволен'),
     ('RESERVE','Резерв'),
     ('REJECTED','Отказ работодателя'),
     ('WITHDRAWN','Отказ кандидата'),
     ('NOT_REQUIRED','Не потребовался'),
     ('NO_SHOW','Не заехал'),
+    ('BLACKLIST','Черный список'),
 ]
-RECRUITMENT_TERMINAL_STAGES={'REJECTED','WITHDRAWN','NOT_REQUIRED','NO_SHOW'}
-RECRUITMENT_SYSTEM_STAGES={'TRANSFERRED','ARRIVAL_APPROVED','ARRIVED','EMPLOYED'}
+RECRUITMENT_TERMINAL_STAGES={'REJECTED','WITHDRAWN','NOT_REQUIRED','NO_SHOW','BLACKLIST'}
+RECRUITMENT_SYSTEM_STAGES={'TRANSFERRED','ARRIVAL_APPROVED','ARRIVED','EMPLOYED','DISMISSED'}
 POOL_UNAVAILABLE_STAGES=RECRUITMENT_TERMINAL_STAGES|RECRUITMENT_SYSTEM_STAGES
 RECRUITMENT_APPROVAL_FLOW=('MANAGER_APPROVAL','SECURITY_CHECK','MEDICAL_DOCUMENTS','PASS_PROCESSING','READY')
 
