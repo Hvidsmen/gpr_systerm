@@ -318,7 +318,8 @@ class MovementReviewRequest(PersonnelModel):
         ('APPROVAL_PARALLEL','Параллельное согласование'),
         ('RETURNED','На доработке'),('TICKETS','Покупка билетов'),
         ('HUB_ARRIVAL','Прибытие в ОП Дудинка'),
-        ('HUB_PROCESSING','Оформление в ОП Дудинка'),('HUB_READY','Документы готовы'),
+        ('HUB_PROCESSING','Оформление в ОП Дудинка'),
+        ('HUB_READY','Документы готовы / к выезду из ОП Дудинка'),
         ('EN_ROUTE','В пути'),('COMPLETED','Маршрут завершён'),('CANCELLED','Отменено'),
     ]
     event=models.OneToOneField(HousingEvent,on_delete=models.PROTECT,related_name='review_request',null=True,blank=True)

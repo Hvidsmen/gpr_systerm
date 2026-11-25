@@ -791,6 +791,7 @@ class MovementReviewRequestTests(TestCase):
         self.assertEqual(cards['COMPLETED']['count'],2);self.assertNotIn('ACCEPTED',cards)
         self.assertContains(page,'Этап жизни заявки');self.assertContains(page,'Параллельное согласование');self.assertContains(page,'Покупка билетов')
         self.assertContains(page,'Оформление в ОП Дудинка');self.assertNotContains(page,'Оформление в ЗУП</span>');self.assertNotContains(page,'Обходной лист</span>')
+        self.assertContains(page,'Документы готовы / к выезду из ОП Дудинка')
         self.assertNotContains(page,'>Принято</span>')
         filtered=self.client.get(url,{'status':'APPROVAL_PEREVAKHTA'})
         self.assertEqual([row.pk for row in filtered.context['dispatcher_review_requests']],[specialist.pk])
