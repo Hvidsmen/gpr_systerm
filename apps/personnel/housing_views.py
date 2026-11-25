@@ -490,8 +490,10 @@ def review_request_context(request):
     query=' '.join(request.GET.get('q','').split())
     raw_project=request.GET.get('project','').strip();project_id=int(raw_project) if raw_project.isdigit() else None
     raw_camp=request.GET.get('camp','').strip();camp_id=int(raw_camp) if raw_camp.isdigit() else None
-    statuses=dict(MovementReviewRequest.STATUSES);status=request.GET.get('status','').strip()
-    if status not in statuses:status=''
+    persisted_statuses=dict(MovementReviewRequest.STATUSES)
+    lifecycle_statuses=dict(MovementReviewRequest.LIFECYCLE_STAGES)
+    status=request.GET.get('status','').strip()
+    if status not in persisted_statuses and status not in lifecycle_statuses:status=''
     sources=dict(MovementReviewRequest.SOURCES);source=request.GET.get('source','').strip()
     if source not in sources:source=''
     base=MovementReviewRequest.objects.filter(company=request.user.company)
@@ -504,16 +506,38 @@ def review_request_context(request):
             Q(base_city__icontains=query)|Q(phone__icontains=query)|Q(request_number__icontains=query)|Q(note__icontains=query))
     if project_id:qs=qs.filter(Q(construction_object__project_id=project_id)|Q(site_object__project_id=project_id))
     if camp_id:qs=qs.filter(to_camp_id=camp_id) if tab=='arrival' else qs.filter(from_camp_id=camp_id)
-    if status:qs=qs.filter(status=status)
     if source:qs=qs.filter(source=source)
+    # Lifecycle cards split the broad database statuses into the actual steps
+    # visible to users.  Keep persisted status parameters working for old links.
+    hub_zup=Q(status='AT_HUB',kind='ARRIVAL',employment_kind='NEW',person__employee__isnull=True)
+    lifecycle_queries={
+        'DRAFT':Q(status='OPEN',source='DISPATCHER',approved_at__isnull=True),
+        'REVIEW':Q(status='OPEN')&(~Q(source='DISPATCHER')|Q(approved_at__isnull=False)),
+        'RETURNED':Q(status='RETURNED'),
+        'TICKETS':Q(status='PEREVAKHTA',kind='ARRIVAL',tickets_ready=False),
+        'HUB_ARRIVAL':Q(status='PEREVAKHTA')&~Q(kind='ARRIVAL',tickets_ready=False),
+        'HUB_ZUP':hub_zup,
+        'HUB_CLEARANCE':Q(status='AT_HUB',clearance_ready=False)&~hub_zup,
+        'HUB_READY':Q(status='AT_HUB',clearance_ready=True)&~hub_zup,
+        'EN_ROUTE':Q(status='EN_ROUTE'),'COMPLETED':Q(status='COMPLETED'),
+        'ACCEPTED':Q(status='ACCEPTED'),'CANCELLED':Q(status='CANCELLED'),
+    }
+    approval_stages={'APPROVAL_FIRST','APPROVAL_PEREVAKHTA','APPROVAL_PARALLEL'}
+    status_scope=qs
+    if status in lifecycle_queries:qs=qs.filter(lifecycle_queries[status])
+    elif status in approval_stages:qs=qs.filter(status='PENDING_APPROVAL')
+    elif status in persisted_statuses:qs=qs.filter(status=status)
     from django.db.models import Case,When,Value,IntegerField
     ordering={'created_desc':['-created_at','-pk'],'created_asc':['created_at','pk'],'name_asc':['person__full_name','pk'],'name_desc':['-person__full_name','-pk'],
         'position_asc':['planning_position_name','person__full_name','pk'],'position_desc':['-planning_position_name','person__full_name','pk'],
         'project_asc':['construction_object__name','person__full_name','pk'],'project_desc':['-construction_object__name','person__full_name','pk'],
         'movement_asc':['movement_date','pk'],'movement_desc':['-movement_date','-pk'],'status_asc':['status','pk'],'status_desc':['-status','-pk']}[sort]
-    rows=list(qs.select_related('person__employee','from_camp','to_camp','construction_object__project','site_object__project','requested_by','event').annotate(
+    ordered_rows=qs.select_related('person__employee','from_camp','to_camp','construction_object__project','site_object__project','requested_by','event').annotate(
         cancelled_order=Case(When(status='CANCELLED',then=Value(1)),default=Value(0),output_field=IntegerField()),
-        open_order=Case(When(status='OPEN',then=Value(0)),default=Value(1),output_field=IntegerField())).order_by('cancelled_order','open_order',*ordering)[:1000])
+        open_order=Case(When(status='OPEN',then=Value(0)),default=Value(1),output_field=IntegerField())).order_by('cancelled_order','open_order',*ordering)
+    if status in approval_stages:
+        rows=[row for row in ordered_rows if row.lifecycle_stage_code()==status][:1000]
+    else:rows=list(ordered_rows[:1000])
     user_role=role_code(request.user)
     for row in rows:
         row.can_cancel=user_role in {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER','PEREVAKHTA_SPECIALIST'} and not (user_role=='PERSONNEL_DISPATCHER' and row.has_approved_stage()) and row.status not in {'AT_HUB','EN_ROUTE','COMPLETED','CANCELLED'} and not row.event_id and not row.hub_arrived_on
@@ -529,11 +553,25 @@ def review_request_context(request):
         'camp':raw_camp if camp_id else '','status':status,'source':source}
     filter_query=urlencode({key:value for key,value in filter_values.items() if value})
     summary_query=urlencode({key:value for key,value in filter_values.items() if key in {'date','project','camp','source'} and value})
+    stage_counts_raw=status_scope.aggregate(total=Count('pk'),**{
+        f'stage_{code.lower()}':Count('pk',filter=condition) for code,condition in lifecycle_queries.items()
+    })
+    stage_counts={code:stage_counts_raw.get(f'stage_{code.lower()}',0) for code,_ in MovementReviewRequest.LIFECYCLE_STAGES}
+    for pending in status_scope.filter(status='PENDING_APPROVAL').select_related('person__employee').only(
+            'status','approval_route','person__employee'):
+        code=pending.lifecycle_stage_code();stage_counts[code]=stage_counts.get(code,0)+1
+    status_cards=[]
+    for code,label in [('', 'Все заявки'),*MovementReviewRequest.LIFECYCLE_STAGES]:
+        params=request.GET.copy()
+        if code:params['status']=code
+        else:params.pop('status',None)
+        status_cards.append({'code':code,'label':label,'count':stage_counts_raw['total'] if not code else stage_counts.get(code,0),
+            'active':status==code,'url':'?'+params.urlencode()+'#movement-requests'})
     return {'personnel_section':'reviews','movement_review_requests':rows,'dispatcher_review_requests':dispatcher_rows,'excel_review_requests':excel_rows,'excel_history_requests':excel_history,'review_tab':tab,'review_arrival':tab=='arrival','review_date':raw_date,'review_sort':sort,'review_sort_options':sort_options,
         'review_query':query,'review_project':project_id,'review_camp':camp_id,'review_status':status,'review_source':source,
         'review_projects':Project.objects.filter(company=request.user.company).order_by('name','pk'),
         'review_camps':Camp.objects.filter(company=request.user.company).order_by('name','pk'),
-        'review_statuses':MovementReviewRequest.STATUSES,'review_sources':MovementReviewRequest.SOURCES,
+        'review_statuses':MovementReviewRequest.LIFECYCLE_STAGES,'review_status_cards':status_cards,'review_sources':MovementReviewRequest.SOURCES,
         'review_filter_query':filter_query,'review_summary_query':summary_query,'review_has_filters':bool(filter_query),
         'arrival_review_requests':rows if tab=='arrival' else [],'departure_review_requests':rows if tab=='departure' else [],
         'arrival_review_count':counts['arrival'],'departure_review_count':counts['departure'],

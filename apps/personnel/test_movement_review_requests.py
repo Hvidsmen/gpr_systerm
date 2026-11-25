@@ -757,6 +757,33 @@ class MovementReviewRequestTests(TestCase):
         self.assertEqual([row.pk for row in page.context['excel_review_requests']],[departure.pk])
         self.assertEqual(page.context['dispatcher_review_requests'],[])
 
+    def test_review_lifecycle_cards_split_real_workflow_steps(self):
+        from .departure_workflow import PARALLEL,initial_route
+        day=timezone.localdate()
+        first_route=initial_route()
+        first=MovementReviewRequest.objects.create(company=self.company,person=self.person,kind='ARRIVAL',movement_date=day,
+            to_camp=self.camp,requested_by=self.personnel,status='PENDING_APPROVAL',approval_route=first_route)
+        specialist_route=initial_route();specialist_route['MANAGER']['status']='APPROVED';specialist_route['SITE_CHIEF']['status']='SKIPPED';specialist_route['PEREVAKHTA_SPECIALIST']['status']='PENDING'
+        specialist=MovementReviewRequest.objects.create(company=self.company,person=self.person,kind='ARRIVAL',movement_date=day,
+            to_camp=self.camp,requested_by=self.personnel,status='PENDING_APPROVAL',approval_route=specialist_route)
+        parallel_route=initial_route();parallel_route['MANAGER']['status']='APPROVED';parallel_route['SITE_CHIEF']['status']='SKIPPED';parallel_route['PEREVAKHTA_SPECIALIST']['status']='APPROVED'
+        for code in PARALLEL:parallel_route[code]['status']='PENDING'
+        parallel=MovementReviewRequest.objects.create(company=self.company,person=self.person,kind='ARRIVAL',movement_date=day,
+            to_camp=self.camp,requested_by=self.personnel,status='PENDING_APPROVAL',approval_route=parallel_route)
+        tickets=MovementReviewRequest.objects.create(company=self.company,person=self.person,kind='ARRIVAL',movement_date=day,
+            to_camp=self.camp,requested_by=self.personnel,status='PEREVAKHTA',tickets_ready=False)
+        self.client.force_login(self.reviewer);url=reverse('personnel:movement_reviews')
+        page=self.client.get(url)
+        cards={card['code']:card for card in page.context['review_status_cards']}
+        self.assertEqual(cards['APPROVAL_FIRST']['count'],1)
+        self.assertEqual(cards['APPROVAL_PEREVAKHTA']['count'],1)
+        self.assertEqual(cards['APPROVAL_PARALLEL']['count'],1)
+        self.assertEqual(cards['TICKETS']['count'],1)
+        self.assertContains(page,'Этап жизни заявки');self.assertContains(page,'Параллельное согласование');self.assertContains(page,'Покупка билетов')
+        filtered=self.client.get(url,{'status':'APPROVAL_PEREVAKHTA'})
+        self.assertEqual([row.pk for row in filtered.context['dispatcher_review_requests']],[specialist.pk])
+        self.assertNotIn(first,filtered.context['dispatcher_review_requests']);self.assertNotIn(parallel,filtered.context['dispatcher_review_requests']);self.assertNotIn(tickets,filtered.context['dispatcher_review_requests'])
+
     def test_position_summary_combines_rest_arrivals_departures_and_exports_excel(self):
         day=timezone.localdate();position=self.employee.display_position
         self.slot.status='МО';self.slot.housing_camp=self.camp

@@ -309,6 +309,19 @@ class MovementReviewRequest(PersonnelModel):
     SOURCES=[('DISPATCHER','Портал'),('EXCEL','Excel')]
     EMPLOYMENT_KINDS=[('STAFF','Штат'),('NEW','Новый'),('REHIRE','Повторный приём'),
         ('TRANSFER','Перевод'),('BUSINESS_TRIP','Командировка')]
+    # User-facing lifecycle stages are more precise than the persisted status:
+    # one PENDING_APPROVAL or AT_HUB value contains several real workflow steps.
+    LIFECYCLE_STAGES=[
+        ('DRAFT','Черновик'),('REVIEW','Проверка перевахтой'),
+        ('APPROVAL_FIRST','Руководитель / начальник участка'),
+        ('APPROVAL_PEREVAKHTA','Согласование перевахтой'),
+        ('APPROVAL_PARALLEL','Параллельное согласование'),
+        ('RETURNED','На доработке'),('TICKETS','Покупка билетов'),
+        ('HUB_ARRIVAL','Прибытие в ОП Дудинка'),('HUB_ZUP','Оформление в ЗУП'),
+        ('HUB_CLEARANCE','Обходной лист'),('HUB_READY','Документы готовы'),
+        ('EN_ROUTE','В пути'),('COMPLETED','Маршрут завершён'),
+        ('ACCEPTED','Принято'),('CANCELLED','Отменено'),
+    ]
     event=models.OneToOneField(HousingEvent,on_delete=models.PROTECT,related_name='review_request',null=True,blank=True)
     person=models.ForeignKey(Person,on_delete=models.PROTECT,related_name='movement_review_requests')
     pool_candidate=models.ForeignKey('personnel.TalentPoolCandidate',on_delete=models.PROTECT,null=True,blank=True,
@@ -389,7 +402,8 @@ class MovementReviewRequest(PersonnelModel):
         }.get(self.kind,'Плановая дата, указанная диспетчером')
     def workflow_status_label(self):
         if self.source=='EXCEL' and self.status=='COMPLETED':return f'Завершена по Excel: {self.travel_status or "Прибыл / убыл"}'
-        if self.status=='OPEN' and self.source=='DISPATCHER':return 'Черновик диспетчера'
+        if self.status=='OPEN' and self.source=='DISPATCHER' and not self.approved_at and not self.has_approved_stage():return 'Черновик диспетчера'
+        if self.status=='OPEN':return 'Ожидает проверки специалистом перевахты'
         if self.status=='PENDING_APPROVAL':
             from .departure_workflow import FIRST_GATE,PARALLEL,ROLE_LABELS,route_for
             route=route_for(self);pending=[code for code,data in route.items() if data.get('status')=='PENDING']
@@ -412,6 +426,27 @@ class MovementReviewRequest(PersonnelModel):
         if self.status=='CANCELLED':return 'Отменена'
         if self.status=='ACCEPTED':return 'Принята'
         return 'Ожидает обработки перевахтой'
+    def lifecycle_stage_code(self):
+        if self.status=='OPEN':
+            return 'DRAFT' if self.source=='DISPATCHER' and not self.approved_at and not self.has_approved_stage() else 'REVIEW'
+        if self.status=='PENDING_APPROVAL':
+            from .departure_workflow import FIRST_GATE,PARALLEL,active_route_roles
+            active=active_route_roles(self)
+            if active.intersection(FIRST_GATE):return 'APPROVAL_FIRST'
+            if 'PEREVAKHTA_SPECIALIST' in active:return 'APPROVAL_PEREVAKHTA'
+            if active.intersection(PARALLEL):return 'APPROVAL_PARALLEL'
+            return 'APPROVAL_PARALLEL'
+        if self.status=='RETURNED':return 'RETURNED'
+        if self.status=='PEREVAKHTA':
+            return 'TICKETS' if self.kind=='ARRIVAL' and not self.tickets_ready else 'HUB_ARRIVAL'
+        if self.status=='AT_HUB':
+            if self.kind=='ARRIVAL' and self.employment_kind=='NEW' and not self.person.employee_id:return 'HUB_ZUP'
+            return 'HUB_CLEARANCE' if not self.clearance_ready else 'HUB_READY'
+        if self.status=='EN_ROUTE':return 'EN_ROUTE'
+        if self.status=='COMPLETED':return 'COMPLETED'
+        if self.status=='ACCEPTED':return 'ACCEPTED'
+        if self.status=='CANCELLED':return 'CANCELLED'
+        return 'REVIEW'
     def route_label(self):
         if self.kind=='ARRIVAL':
             origin=self.base_city or 'Базовый город не указан'
