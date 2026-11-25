@@ -7,7 +7,8 @@ from django.db.models import F
 from django.utils import timezone
 from core.permissions import require_roles
 from .models import (RecruitmentRequest, RecruitmentCandidate, ArrivalPreparation,
-                     CandidateDocument, RecruitmentEvent, CampStay,MovementReviewRequest,TalentPoolCandidate)
+                     CandidateDocument, RecruitmentEvent, CampStay,MovementReviewRequest,TalentPoolCandidate,
+                     TalentPoolStageEvent)
 from .models import Person
 from .recruitment_models import POOL_UNAVAILABLE_STAGES,RECRUITMENT_SYSTEM_STAGES,RECRUITMENT_TERMINAL_STAGES
 
@@ -19,6 +20,9 @@ ARRIVAL_PROCESSORS = DISPATCH | {'PEREVAKHTA_SPECIALIST'}
 READ = DISPATCH | RECRUIT | {'PEREVAKHTA_SPECIALIST'}
 EDITABLE_CANDIDATE_STAGES={value for value,_ in RecruitmentCandidate.STATES}-RECRUITMENT_SYSTEM_STAGES
 ACTIVE_CANDIDATE_STAGES={value for value,_ in RecruitmentCandidate.STATES}-RECRUITMENT_TERMINAL_STAGES-{'RESERVE','ARRIVED'}
+TalentPoolFormConfirmationPairs=(('ready_for_arrival','ready_for_arrival_on'),('manager_approved','manager_approved_on'),
+    ('security_approved','security_approved_on'),('medical_exam_passed','medical_exam_on'),
+    ('pass_documents_sent','pass_documents_sent_on'),('pass_ready','pass_ready_on'))
 
 
 def serialize(user, roles):
@@ -194,9 +198,93 @@ def save_pool_documents(user,candidate,files_by_kind):
 
 
 def normalized_candidate_identity(full_name,phone):
-    name=' '.join((full_name or '').split()).casefold()
+    name=' '.join((full_name or '').split()).casefold().replace('ё','е')
     digits=''.join(character for character in (phone or '') if character.isdigit())
+    if len(digits)==11 and digits[0] in {'7','8'}:digits=digits[-10:]
     return name,digits
+
+
+def duplicate_candidates(company,full_name,phone,exclude_pk=None):
+    """Return exact duplicates by the required pair: normalized name and phone."""
+    identity=normalized_candidate_identity(full_name,phone)
+    if not all(identity):return []
+    rows=TalentPoolCandidate.objects.filter(company=company)
+    if exclude_pk:rows=rows.exclude(pk=exclude_pk)
+    stage_labels=dict(TalentPoolCandidate._meta.get_field('stage').choices)
+    matches=[]
+    for row in rows.only('pk','full_name','phone','stage','archived_at'):
+        if normalized_candidate_identity(row.full_name,row.phone)==identity:
+            matches.append({'pk':row.pk,'full_name':row.full_name,'phone':row.phone,
+                'stage':row.stage,'stage_label':stage_labels[row.stage],'archived':bool(row.archived_at)})
+    return matches
+
+
+def duplicate_candidate_map(company):
+    """Map every duplicate candidate id to the other matching cards."""
+    groups={};rows=list(TalentPoolCandidate.objects.filter(company=company).only(
+        'pk','full_name','phone','stage','archived_at'))
+    stage_labels=dict(TalentPoolCandidate._meta.get_field('stage').choices)
+    for row in rows:
+        identity=normalized_candidate_identity(row.full_name,row.phone)
+        if all(identity):groups.setdefault(identity,[]).append(row)
+    result={}
+    for matches in groups.values():
+        if len(matches)<2:continue
+        for row in matches:
+            result[row.pk]=[{'pk':other.pk,'full_name':other.full_name,'phone':other.phone,
+                'stage':other.stage,'stage_label':stage_labels[other.stage],'archived':bool(other.archived_at)}
+                for other in matches if other.pk!=row.pk]
+    return result
+
+
+@transaction.atomic
+def merge_pool_candidates(user,source_id,target_id):
+    """Merge a confirmed duplicate into the selected durable card without losing links."""
+    if source_id==target_id:raise ValidationError('Выберите другую основную карточку.')
+    rows={row.pk:row for row in TalentPoolCandidate.objects.select_for_update().filter(
+        company=user.company,pk__in={source_id,target_id})}
+    if set(rows)!={source_id,target_id}:raise ValidationError('Одна из карточек не найдена.')
+    source,target=rows[source_id],rows[target_id]
+    source_identity=normalized_candidate_identity(source.full_name,source.phone)
+    target_identity=normalized_candidate_identity(target.full_name,target.phone)
+    if not all(source_identity) or source_identity!=target_identity:
+        raise ValidationError('Объединять можно только карточки с одинаковыми ФИО и телефоном.')
+    if source.employed_employee_id and target.employed_employee_id and source.employed_employee_id!=target.employed_employee_id:
+        raise ValidationError('Карточки связаны с разными сотрудниками ЗУП. Сначала проверьте привязку.')
+
+    if source.employed_employee_id and not target.employed_employee_id:
+        employee_id=source.employed_employee_id
+        TalentPoolCandidate.objects.filter(pk=source.pk).update(employed_employee=None)
+        target.employed_employee_id=employee_id
+        target.employed_at=source.employed_at
+    for field in ('position_id','construction_object_id','camp_id','base_city_id','responsible_hr_id'):
+        if not getattr(target,field) and getattr(source,field):setattr(target,field,getattr(source,field))
+    for flag,date_field in TalentPoolFormConfirmationPairs:
+        if getattr(source,flag) and not getattr(target,flag):
+            setattr(target,flag,True);setattr(target,date_field,getattr(source,date_field))
+    if source.notes and source.notes not in target.notes:
+        target.notes='\n\n'.join(value for value in (target.notes,source.notes) if value)
+    target_source=dict(target.source_data or {});source_data=dict(source.source_data or {})
+    for key,value in source_data.items():
+        if key!='funnel_sources' and value and not target_source.get(key):target_source[key]=value
+    funnel_sources=[]
+    for value in [*(target_source.get('funnel_sources') or []),*(source_data.get('funnel_sources') or [])]:
+        if value not in funnel_sources:funnel_sources.append(value)
+    if funnel_sources:target_source['funnel_sources']=funnel_sources
+    merged=list(target_source.get('merged_candidates') or [])
+    merged.extend(source_data.get('merged_candidates') or [])
+    merged.append({'id':source.pk,'full_name':source.full_name,'phone':source.phone,
+        'merged_at':timezone.now().isoformat(),'merged_by':user.pk})
+    target_source['merged_candidates']=merged;target.source_data=target_source
+    target.save()
+
+    RecruitmentCandidate.objects.filter(company=user.company,pool_candidate=source).update(pool_candidate=target)
+    MovementReviewRequest.objects.filter(company=user.company,pool_candidate=source).update(pool_candidate=target)
+    source.documents.update(candidate=target);source.stage_events.update(candidate=target)
+    TalentPoolStageEvent.objects.create(company=user.company,candidate=target,from_stage=target.stage,
+        to_stage=target.stage,actor=user,note=f'Объединена карточка №{source.pk}: {source.full_name}, {source.phone}.')
+    source.delete()
+    return target
 
 
 def ensure_pool_candidate(user,row,candidate,chosen=None):

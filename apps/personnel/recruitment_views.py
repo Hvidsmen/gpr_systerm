@@ -78,6 +78,7 @@ def _position_funnel_summary(candidate_rows,request_rows,application_rows):
         item=ensure(key,label);item['candidate_count']+=1
         item['people'].append({'pk':row['pk'],'full_name':row['full_name'],'stage':row['stage'],'stage_label':stage_labels[row['stage']],
             'source_data':row['source_data'],'security_approved':row['security_approved'],
+            'duplicate_candidates':row.get('duplicate_candidates',[]),
             'stage_sla':row.get('stage_sla',{'managed':False}),
             'construction_object':(application['request__construction_object__name'] if application else
                 row['construction_object__name'] or (row['source_data'] or {}).get('construction_site','')),
@@ -274,8 +275,10 @@ def request_list(request,recruitment_page='bank'):
         elif pool_state!='all':candidates=candidates.filter(archived_at__isnull=True)
     else:candidates=candidates.filter(archived_at__isnull=True)
     if recruitment_page=='ready':candidates=candidates.filter(stage='TRANSFERRED')
-    candidate_rows=list(candidates.values('pk','company_id','full_name','stage','stage_started_at','security_approved',
+    candidate_rows=list(candidates.values('pk','company_id','full_name','phone','stage','stage_started_at','security_approved',
         'position_id','position__name','construction_object__name','source_data'))
+    duplicate_map=service.duplicate_candidate_map(request.user.company)
+    for candidate_row in candidate_rows:candidate_row['duplicate_candidates']=duplicate_map.get(candidate_row['pk'],[])
     work_calendar=WorkingDayCalendar(request.user.company_id)
     for candidate_row in candidate_rows:candidate_row['stage_sla']=stage_status(candidate_row,calendar=work_calendar)
     candidate_ids=[row['pk'] for row in candidate_rows]
@@ -365,6 +368,8 @@ def pool_list(request):
     if selected_camp_ids:rows=rows.filter(camp_id__in=selected_camp_ids)
     if selected_object_ids:rows=rows.filter(construction_object_id__in=selected_object_ids)
     page=Paginator(rows,50).get_page(request.GET.get('page'))
+    duplicate_map=service.duplicate_candidate_map(request.user.company)
+    for row in page.object_list:row.duplicate_candidates=duplicate_map.get(row.pk,[])
     params=request.GET.copy();params.pop('page',None)
     object_rows=list(ConstructionObject.objects.filter(company=request.user.company).select_related('project').order_by('project__name','name','pk'))
     object_options=[{'pk':row.pk,'label':f'{row.project.name} → {row.name}'} for row in object_rows]
@@ -531,8 +536,9 @@ def pool_edit(request,pk=None):
     require_roles(request.user,service.RECRUIT)
     row=get_object_or_404(TalentPoolCandidate,company=request.user.company,pk=pk) if pk else None
     previous_stage=row.stage if row else None
+    create_anyway=row is None and request.POST.get('duplicate_action')=='create_anyway'
     form=TalentPoolForm(request.POST if request.method=='POST' else None,request.FILES if request.method=='POST' else None,
-        company=request.user.company,user=request.user,instance=row)
+        company=request.user.company,user=request.user,instance=row,allow_duplicate=create_anyway)
     if request.method=='POST' and form.is_valid():
         with transaction.atomic():
             saved=form.save()
@@ -543,7 +549,22 @@ def pool_edit(request,pk=None):
                 'BASE':form.cleaned_data['base_documents'],'MANAGER':form.cleaned_data['manager_documents'],
                 'SECURITY':form.cleaned_data['security_documents']})
         messages.success(request,'Кандидат сохранён в общем пуле.');return redirect('personnel:recruitment_pool')
-    return render(request,'personnel/recruitment_form.html',{**context(request.user),'title':'Карточка кандидата общего пула','form':form})
+    return render(request,'personnel/recruitment_form.html',{**context(request.user),'title':'Карточка кандидата общего пула','form':form,
+        'pool_form':True,'editing_pool_candidate':row,'duplicate_candidates':form.duplicate_candidates})
+
+
+@login_required
+@require_POST
+def candidate_merge(request,pk):
+    require_roles(request.user,service.RECRUIT)
+    target=request.POST.get('target','')
+    if not target.isdigit():messages.error(request,'Выберите основную карточку.')
+    else:
+        try:saved=service.merge_pool_candidates(request.user,pk,int(target))
+        except ValidationError as exc:messages.error(request,'; '.join(exc.messages))
+        except IntegrityError:messages.error(request,'Не удалось объединить карточки из-за связанных данных.')
+        else:messages.success(request,f'Дубль объединён. Основная карточка: {saved.full_name} №{saved.pk}.')
+    return redirect('personnel:recruitment_list' if request.POST.get('return_to')=='bank' else 'personnel:recruitment_pool')
 
 
 @login_required

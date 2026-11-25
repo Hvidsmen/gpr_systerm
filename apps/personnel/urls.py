@@ -109,6 +109,7 @@ urlpatterns += [
     path('recruitment/pool/<int:pk>/',recruitment.pool_edit,name='recruitment_pool_edit'),
     path('recruitment/candidates/<int:pk>/',recruitment.candidate_card,name='recruitment_candidate_card'),
     path('recruitment/candidates/<int:pk>/inline/',recruitment.candidate_inline,name='recruitment_candidate_inline'),
+    path('recruitment/candidates/<int:pk>/merge/',recruitment.candidate_merge,name='recruitment_candidate_merge'),
     path('recruitment/candidates/<int:pk>/stage/',recruitment.candidate_stage_update,name='recruitment_candidate_stage'),
     path('recruitment/candidates/<int:pk>/stage/advance/',recruitment.candidate_stage_advance,name='recruitment_candidate_stage_advance'),
     path('recruitment/candidates/<int:pk>/stage/return/',recruitment.candidate_stage_return,name='recruitment_candidate_stage_return'),

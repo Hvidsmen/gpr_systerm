@@ -170,8 +170,9 @@ class TalentPoolForm(forms.ModelForm):
             'medical_exam_on':forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}),
             'pass_documents_sent_on':forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}),
             'pass_ready_on':forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'})}
-    def __init__(self,*args,company,user,**kwargs):
+    def __init__(self,*args,company,user,allow_duplicate=False,**kwargs):
         super().__init__(*args,**kwargs);self.instance.company=company
+        self.allow_duplicate=allow_duplicate;self.duplicate_candidates=[]
         self._original_stage=self.instance.stage
         self._original_confirmations={field:getattr(self.instance,field) for pair in self.confirmation_pairs for field in pair}
         if not self.instance.pk:self.instance.created_by=user
@@ -297,12 +298,10 @@ class TalentPoolForm(forms.ModelForm):
         obj,camp=data.get('construction_object'),data.get('camp')
         if obj and camp and not allowed_camps(self.instance.company,obj).filter(pk=camp.pk).exists():
             self.add_error('camp','Выберите местонахождение, связанное с указанным объектом.')
-        from .recruitment import normalized_candidate_identity
-        identity=normalized_candidate_identity(data.get('full_name'),data.get('phone'))
-        if identity[0]:
-            for existing in TalentPoolCandidate.objects.filter(company=self.instance.company).exclude(pk=self.instance.pk):
-                if normalized_candidate_identity(existing.full_name,existing.phone)==identity:
-                    raise forms.ValidationError(f'Такой кандидат уже есть в общем пуле: {existing.full_name}.')
+        from .recruitment import duplicate_candidates
+        self.duplicate_candidates=duplicate_candidates(self.instance.company,data.get('full_name'),data.get('phone'),self.instance.pk)
+        if self.duplicate_candidates and not self.allow_duplicate:
+            self.add_error(None,'Найден повторяющийся кандидат с такими же ФИО и телефоном. Проверьте карточку перед созданием новой.')
         return data
 
 

@@ -1427,8 +1427,32 @@ class RecruitmentTests(TestCase):
         self.assertContains(page,'Электромонтажник');self.assertContains(page,'Все данные кандидата')
         duplicate=self.client.post(reverse('personnel:recruitment_pool_create'),{
             'full_name':'  ручной   кандидат ','phone':'8 (999) 000-11-22','stage':'NEW','notes':'Повтор'})
-        self.assertEqual(duplicate.status_code,200);self.assertContains(duplicate,'Такой кандидат уже есть в общем пуле')
+        self.assertEqual(duplicate.status_code,200);self.assertContains(duplicate,'Найден повторяющийся кандидат')
+        self.assertContains(duplicate,'перейти к созданной');self.assertContains(duplicate,'Всё равно завершить создание новой')
         self.assertEqual(TalentPoolCandidate.objects.filter(company=self.company).count(),1)
+
+        created_anyway=self.client.post(reverse('personnel:recruitment_pool_create'),{
+            'full_name':'Ручной Кандидат','position':position.pk,'construction_object':self.obj.pk,
+            'phone':'+7 999 000 11 22','stage':'NEW','notes':'Отдельная карточка','duplicate_action':'create_anyway'})
+        self.assertRedirects(created_anyway,reverse('personnel:recruitment_pool'),fetch_redirect_response=False)
+        duplicates=list(TalentPoolCandidate.objects.filter(company=self.company).order_by('pk'))
+        self.assertEqual(len(duplicates),2)
+        bank=self.client.get(reverse('personnel:recruitment_list'))
+        self.assertContains(bank,'Найден дубль по ФИО и телефону');self.assertContains(bank,'Объединить')
+
+        request_row=self.row()
+        application=RecruitmentCandidate.objects.create(company=self.company,request=request_row,pool_candidate=duplicates[1],
+            full_name=duplicates[1].full_name,phone=duplicates[1].phone,created_by=self.recruiter)
+        TalentPoolStageEvent.objects.create(company=self.company,candidate=duplicates[1],from_stage='NEW',to_stage='NEW',
+            actor=self.recruiter,note='История дубля')
+        merged=self.client.post(reverse('personnel:recruitment_candidate_merge',args=[duplicates[1].pk]),{
+            'target':duplicates[0].pk})
+        self.assertRedirects(merged,reverse('personnel:recruitment_pool'),fetch_redirect_response=False)
+        self.assertFalse(TalentPoolCandidate.objects.filter(pk=duplicates[1].pk).exists())
+        application.refresh_from_db();self.assertEqual(application.pool_candidate_id,duplicates[0].pk)
+        primary=TalentPoolCandidate.objects.get(pk=duplicates[0].pk)
+        self.assertIn(duplicates[1].pk,[item['id'] for item in primary.source_data['merged_candidates']])
+        self.assertTrue(primary.stage_events.filter(note='История дубля').exists())
 
     def test_recruitment_specialist_directory_navigation_crud_and_scope(self):
         from .models import RecruitmentSpecialist,TalentPoolCandidate
