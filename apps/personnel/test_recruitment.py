@@ -556,6 +556,39 @@ class RecruitmentTests(TestCase):
             self.client.force_login(self.foreign);self.assertEqual(self.client.get(reverse('personnel:recruitment_document',args=[doc.pk])).status_code,404)
             self.assertValidation(service.save_candidate,self.recruiter,row.pk,values,files=[SimpleUploadedFile('run.exe',b'x')])
             self.assertEqual(RecruitmentCandidate.objects.count(),1)
+
+    def test_pool_card_paperclips_upload_group_and_protect_documents(self):
+        from .models import TalentPoolDocument
+        pool=self.candidate(status='MANAGER_APPROVAL',ready_on=None).pool_candidate
+        self.client.force_login(self.recruiter);url=reverse('personnel:recruitment_candidate_inline',args=[pool.pk])
+        payload={'full_name':pool.full_name,'stage':'MANAGER_APPROVAL','stage_reason':'','position':self.position.pk,
+            'construction_object':self.obj.pk,'camp':'','phone':pool.phone,'birth_date':'','passport':'',
+            'base_city':'','new_base_city':'','ready_for_arrival_on':'','manager_approved':'on',
+            'manager_approved_on':'2026-11-20','security_approved':'on','security_approved_on':'2026-11-21',
+            'medical_exam_on':'','skzi_until':'','pass_documents_sent_on':'','pass_ready_on':'',
+            'responsible_hr':'','notes':'','base_documents':SimpleUploadedFile('passport.pdf',b'%PDF-base'),
+            'manager_documents':SimpleUploadedFile('customer.jpg',b'jpg-manager'),
+            'security_documents':SimpleUploadedFile('seb.png',b'png-security')}
+        with TemporaryDirectory() as root,override_settings(ACTUATION_FILES_ROOT=root):
+            response=self.client.post(url,payload)
+            self.assertEqual(response.status_code,200,response.content.decode())
+            self.assertContains(response,'📎');self.assertContains(response,'passport.pdf')
+            documents=list(TalentPoolDocument.objects.filter(candidate=pool).order_by('kind'))
+            self.assertEqual([(doc.kind,doc.original_name) for doc in documents],
+                [('BASE','passport.pdf'),('MANAGER','customer.jpg'),('SECURITY','seb.png')])
+            self.assertTrue(all(Path(doc.file.path).is_relative_to(Path(root)/'recruitment') for doc in documents))
+            card=self.client.get(reverse('personnel:recruitment_candidate_card',args=[pool.pk]))
+            for name in ('passport.pdf','customer.jpg','seb.png'):self.assertContains(card,name)
+            download=reverse('personnel:recruitment_pool_document',args=[documents[0].pk])
+            file_response=self.client.get(download)
+            self.assertEqual(b''.join(file_response.streaming_content),b'%PDF-base')
+            self.assertEqual(file_response['Cache-Control'],'private, no-store')
+            self.client.force_login(self.foreign);self.assertEqual(self.client.get(download).status_code,404)
+            self.client.force_login(self.recruiter)
+            invalid=dict(payload);invalid['base_documents']=SimpleUploadedFile('virus.exe',b'x')
+            invalid.pop('manager_documents');invalid.pop('security_documents')
+            rejected=self.client.post(url,invalid)
+            self.assertEqual(rejected.status_code,422);self.assertEqual(TalentPoolDocument.objects.filter(candidate=pool).count(),3)
     def test_upload_failure_cleans_files_and_rolls_back_candidate(self):
         row=self.row();service.assign_request(self.hr_head,row.pk,self.recruiter,row.revision)
         with TemporaryDirectory() as root,override_settings(ACTUATION_FILES_ROOT=root):

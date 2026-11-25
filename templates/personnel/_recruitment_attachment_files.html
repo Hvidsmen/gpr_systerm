@@ -1,0 +1,2 @@
+{% if field.errors %}<div class="app-form-errors candidate-attachment-errors" role="alert">{{ field.errors }}</div>{% endif %}
+{% if documents %}<div class="candidate-attachment-files">{% for document in documents %}<a href="{% url 'personnel:recruitment_pool_document' document.pk %}" title="Скачать {{ document.original_name }}">📎 {{ document.original_name }}</a>{% endfor %}</div>{% endif %}

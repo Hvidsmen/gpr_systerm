@@ -526,4 +526,4 @@ from .lodging_models import LodgingOrganization,LodgingGuest,LodgingBuilding,Lod
 from .lodging_import_models import LodgingImportBatch,LodgingImportRow
 
 from .recruitment_models import (RecruitmentRequest,RecruitmentCandidate,ArrivalPreparation,CandidateDocument,
-    RecruitmentEvent,RecruitmentSpecialist,TalentPoolCandidate,TalentPoolStageEvent)
+    RecruitmentEvent,RecruitmentSpecialist,TalentPoolCandidate,TalentPoolStageEvent,TalentPoolDocument)

@@ -1,0 +1,5 @@
+<span class="candidate-attachment" data-candidate-attachment>
+  {% if can_edit %}<label class="candidate-attachment-button" for="{{ field.id_for_label }}" title="{{ field.label }}"><span aria-hidden="true">📎</span><span class="visually-hidden">{{ field.label }}</span>{{ field }}</label>{% endif %}
+  {% if documents %}<span class="candidate-attachment-count" title="Приложено файлов: {{ documents|length }}">{{ documents|length }}</span>{% endif %}
+  <span class="candidate-attachment-selected" data-candidate-attachment-selected></span>
+</span>

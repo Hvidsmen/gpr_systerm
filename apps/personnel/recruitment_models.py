@@ -197,6 +197,21 @@ class TalentPoolStageEvent(PersonnelModel):
         if self.actor_id and self.actor.company_id!=self.company_id:raise ValidationError('Автор другой компании.')
 
 
+class TalentPoolDocument(PersonnelModel):
+    KINDS=[('BASE','Базовый пакет документов'),('MANAGER','Согласование Заказчика'),('SECURITY','Согласование СЭБ')]
+    candidate=models.ForeignKey(TalentPoolCandidate,on_delete=models.CASCADE,related_name='documents')
+    kind=models.CharField('Раздел документов',max_length=12,choices=KINDS,db_index=True)
+    file=models.FileField(storage=resume_storage,upload_to=resume_path)
+    original_name=models.CharField(max_length=255)
+    size=models.PositiveBigIntegerField()
+    uploaded_by=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,related_name='talent_pool_documents')
+    class Meta:ordering=['kind','created_at','pk']
+    def clean(self):
+        super().clean()
+        if self.candidate_id and self.candidate.company_id!=self.company_id:raise ValidationError('Кандидат другой компании.')
+        if self.uploaded_by_id and self.uploaded_by.company_id!=self.company_id:raise ValidationError('Автор другой компании.')
+
+
 class RecruitmentRequest(PersonnelModel):
     CLOSE_KINDS=[('AUTO','Автоматически'),('FORCED','Принудительно')]
     construction_object = models.ForeignKey('projects.ConstructionObject', on_delete=models.PROTECT, verbose_name='Объект')

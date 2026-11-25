@@ -173,6 +173,26 @@ def validate_documents(files):
         if not file.size or file.size>10*1024*1024:raise ValidationError('Размер каждого файла — от 1 байта до 10 МБ.')
 
 
+def save_pool_documents(user,candidate,files_by_kind):
+    """Store private candidate files after the card itself has validated."""
+    from .models import TalentPoolDocument
+    allowed=dict(TalentPoolDocument.KINDS);written=[]
+    try:
+        for kind,files in files_by_kind.items():
+            if kind not in allowed:raise ValidationError('Неизвестный раздел документов кандидата.')
+            validate_documents(files)
+            for file in files:
+                doc=TalentPoolDocument(company=user.company,candidate=candidate,kind=kind,uploaded_by=user,
+                    original_name=Path(file.name.replace('\\','/')).name[:255],size=file.size)
+                doc.file.save(file.name,file,save=False);written.append(doc.file);doc.save()
+    except Exception:
+        for stored in written:
+            try:stored.storage.delete(stored.name)
+            except OSError:pass
+        raise
+    return len(written)
+
+
 def normalized_candidate_identity(full_name,phone):
     name=' '.join((full_name or '').split()).casefold()
     digits=''.join(character for character in (phone or '') if character.isdigit())

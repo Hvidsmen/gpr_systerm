@@ -122,5 +122,6 @@ urlpatterns += [
     path('recruitment/arrivals/bulk/',recruitment.bulk_arrival_handoff,name='recruitment_arrival_bulk'),
     path('recruitment/arrivals/bulk/<uuid:batch>/',recruitment.bulk_arrival_edit,name='recruitment_arrival_bulk_edit'),
     path('recruitment/documents/<int:pk>/', recruitment.document_download, name='recruitment_document'),
+    path('recruitment/pool-documents/<int:pk>/',recruitment.pool_document_download,name='recruitment_pool_document'),
     path('recruitment/arrivals/<int:pk>/', recruitment.arrival_edit, name='recruitment_arrival'),
 ]

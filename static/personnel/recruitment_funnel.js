@@ -46,6 +46,12 @@
       if(save)save.disabled=false;
     };
     if(form){form.addEventListener('input',markDirty);form.addEventListener('change',markDirty);}
+    root.querySelectorAll('[data-candidate-attachment] input[type="file"]').forEach(function(input){
+      input.addEventListener('change',function(){
+        const selected=input.closest('[data-candidate-attachment]')?.querySelector('[data-candidate-attachment-selected]');
+        if(selected)selected.textContent=input.files.length?('+'+input.files.length):'';
+      });
+    });
     [
       ['ready_for_arrival','ready_for_arrival_on'],
       ['manager_approved','manager_approved_on'],

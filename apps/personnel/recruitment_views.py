@@ -13,7 +13,7 @@ from core.permissions import require_roles, role_code
 from apps.projects.models import ConstructionObject
 from apps.resources.models import Employee,Position
 from .models import (RecruitmentRequest,RecruitmentCandidate,RecruitmentSpecialist,ArrivalPreparation,CandidateDocument,
-    TalentPoolCandidate,TalentPoolStageEvent,MovementReviewRequest,Camp)
+    TalentPoolCandidate,TalentPoolStageEvent,TalentPoolDocument,MovementReviewRequest,Camp)
 from . import recruitment as service
 from .recruitment_forms import (RequestForm,CandidateForm,ArrivalForm,RevisionForm,ReasonForm,TalentPoolForm,
     TalentPoolImportForm,BulkArrivalCommonForm,BulkArrivalRowForm,RecruiterAssignmentForm,RecruitmentSpecialistForm,
@@ -377,7 +377,7 @@ def candidate_card(request,pk):
         'request__construction_object','request__assigned_to','arrival__movement_request','arrival__actual_stay').prefetch_related('documents').order_by('-created_at','-pk')
     row=get_object_or_404(TalentPoolCandidate.objects.filter(company=request.user.company).select_related(
         'position','construction_object','camp','base_city','responsible_hr','employed_employee').prefetch_related(
-        Prefetch('vacancy_candidates',queryset=applications)),pk=pk)
+        'documents',Prefetch('vacancy_candidates',queryset=applications)),pk=pk)
     from .models import RecruitmentEvent
     events=RecruitmentEvent.objects.filter(company=request.user.company,candidate__pool_candidate=row).select_related(
         'request__construction_object','candidate','actor').order_by('-created_at','-pk')[:200]
@@ -385,8 +385,12 @@ def candidate_card(request,pk):
     source_applications=[event for event in source_events if event.get('sheet')=='План найма']
     stage_events=row.stage_events.select_related('actor')[:200]
     employment_candidates=review_employees(row)
+    documents=list(row.documents.all())
     return render(request,'personnel/recruitment_candidate_card.html',{**context(request.user),'row':row,'events':events,
         'source_events':source_events,'source_applications':source_applications,'stage_events':stage_events,
+        'base_documents':[doc for doc in documents if doc.kind=='BASE'],
+        'manager_documents':[doc for doc in documents if doc.kind=='MANAGER'],
+        'security_documents':[doc for doc in documents if doc.kind=='SECURITY'],
         'has_applications':bool(row.vacancy_candidates.all()),'employment_candidates':employment_candidates,
         'employment_review':(row.source_data or {}).get(REVIEW_KEY),'employment_return_to':'card',
         'employment_can_link':role_code(request.user) in service.RECRUIT,
@@ -402,7 +406,8 @@ def candidate_inline(request,pk):
     can_edit=role_code(request.user) in service.RECRUIT
     if request.method=='POST':require_roles(request.user,service.RECRUIT)
     previous_stage=row.stage
-    form=TalentPoolForm(request.POST if request.method=='POST' else None,company=request.user.company,user=request.user,
+    form=TalentPoolForm(request.POST if request.method=='POST' else None,request.FILES if request.method=='POST' else None,
+        company=request.user.company,user=request.user,
         instance=row,auto_id=f'id_candidate_{row.pk}_%s')
     saved=False
     if request.method=='POST' and form.is_valid():
@@ -411,13 +416,20 @@ def candidate_inline(request,pk):
             if previous_stage!=row.stage:
                 TalentPoolStageEvent.objects.create(company=request.user.company,candidate=row,from_stage=previous_stage,
                     to_stage=row.stage,actor=request.user,note=form.cleaned_data.get('stage_reason','').strip())
+            service.save_pool_documents(request.user,row,{
+                'BASE':form.cleaned_data['base_documents'],'MANAGER':form.cleaned_data['manager_documents'],
+                'SECURITY':form.cleaned_data['security_documents']})
         saved=True;form=TalentPoolForm(company=request.user.company,user=request.user,instance=row,
             auto_id=f'id_candidate_{row.pk}_%s')
     if not can_edit:
         for field in form.fields.values():field.disabled=True
     status=422 if request.method=='POST' and not saved else 200
+    documents=list(row.documents.all())
     return render(request,'personnel/_recruitment_candidate_inline.html',{
         'row':row,'form':form,'can_edit':can_edit,
+        'base_documents':[doc for doc in documents if doc.kind=='BASE'],
+        'manager_documents':[doc for doc in documents if doc.kind=='MANAGER'],
+        'security_documents':[doc for doc in documents if doc.kind=='SECURITY'],
         'can_administer_pool':role_code(request.user)=='ADMIN' and inline_source!='ready',
         'inline_source':inline_source,'saved':saved,'employment_candidates':review_employees(row),
         'employment_review':(row.source_data or {}).get(REVIEW_KEY),'employment_return_to':'list',
@@ -512,13 +524,17 @@ def pool_edit(request,pk=None):
     require_roles(request.user,service.RECRUIT)
     row=get_object_or_404(TalentPoolCandidate,company=request.user.company,pk=pk) if pk else None
     previous_stage=row.stage if row else None
-    form=TalentPoolForm(request.POST if request.method=='POST' else None,company=request.user.company,user=request.user,instance=row)
+    form=TalentPoolForm(request.POST if request.method=='POST' else None,request.FILES if request.method=='POST' else None,
+        company=request.user.company,user=request.user,instance=row)
     if request.method=='POST' and form.is_valid():
         with transaction.atomic():
             saved=form.save()
             if previous_stage and previous_stage!=saved.stage:
                 TalentPoolStageEvent.objects.create(company=request.user.company,candidate=saved,from_stage=previous_stage,
                     to_stage=saved.stage,actor=request.user,note=form.cleaned_data.get('stage_reason','').strip())
+            service.save_pool_documents(request.user,saved,{
+                'BASE':form.cleaned_data['base_documents'],'MANAGER':form.cleaned_data['manager_documents'],
+                'SECURITY':form.cleaned_data['security_documents']})
         messages.success(request,'Кандидат сохранён в общем пуле.');return redirect('personnel:recruitment_pool')
     return render(request,'personnel/recruitment_form.html',{**context(request.user),'title':'Карточка кандидата общего пула','form':form})
 
@@ -753,6 +769,18 @@ def bulk_arrival_edit(request,batch):
 def document_download(request,pk):
     require_roles(request.user,service.READ)
     doc=get_object_or_404(CandidateDocument,company=request.user.company,candidate__company=request.user.company,pk=pk)
+    try:stream=doc.file.open('rb')
+    except FileNotFoundError:raise Http404('Файл не найден в хранилище.')
+    response=FileResponse(stream,as_attachment=True,filename=doc.original_name,content_type='application/octet-stream')
+    response['X-Content-Type-Options']='nosniff';response['Cache-Control']='private, no-store'
+    return response
+
+
+@login_required
+@require_GET
+def pool_document_download(request,pk):
+    require_roles(request.user,service.READ)
+    doc=get_object_or_404(TalentPoolDocument,company=request.user.company,candidate__company=request.user.company,pk=pk)
     try:stream=doc.file.open('rb')
     except FileNotFoundError:raise Http404('Файл не найден в хранилище.')
     response=FileResponse(stream,as_attachment=True,filename=doc.original_name,content_type='application/octet-stream')

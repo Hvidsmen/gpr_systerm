@@ -150,6 +150,12 @@ class TalentPoolForm(forms.ModelForm):
         help_text='Заполняется автоматически из заявки на заезд: по билету, затем заменяется фактической датой.')
     responsible_hr=forms.ModelChoiceField(label='Ответственный HR',required=False,
         queryset=RecruitmentSpecialist.objects.none(),empty_label='Не назначен')
+    base_documents=DocumentsField(label='Базовый пакет документов',required=False,widget=MultipleFiles(
+        attrs={'class':'candidate-attachment-input','accept':'.pdf,.doc,.docx,.txt,.jpg,.jpeg,.png'}))
+    manager_documents=DocumentsField(label='Документы согласования Заказчика',required=False,widget=MultipleFiles(
+        attrs={'class':'candidate-attachment-input','accept':'.pdf,.doc,.docx,.txt,.jpg,.jpeg,.png'}))
+    security_documents=DocumentsField(label='Документы согласования СЭБ',required=False,widget=MultipleFiles(
+        attrs={'class':'candidate-attachment-input','accept':'.pdf,.doc,.docx,.txt,.jpg,.jpeg,.png'}))
     source_fields=('birth_date','passport','skzi_until')
     class Meta:
         model=TalentPoolCandidate
@@ -238,6 +244,7 @@ class TalentPoolForm(forms.ModelForm):
             if raw and not self.initial.get(field) and not getattr(self.instance,field,False):
                 self.fields[field].help_text=format_html('{}: <strong>{}</strong>. Подтвердите флажком и датой.',label,raw)
         self.order_fields(['full_name','stage','stage_reason','position','construction_object','camp','phone','birth_date','passport',
+            'base_documents','manager_documents','security_documents',
             'base_city','new_base_city','ready_for_arrival','ready_for_arrival_on','dudinka_arrival','manager_approved','manager_approved_on',
             'security_approved','security_approved_on','skzi_until','medical_exam_passed','medical_exam_on',
             'pass_documents_sent','pass_documents_sent_on','pass_ready','pass_ready_on',
@@ -269,6 +276,8 @@ class TalentPoolForm(forms.ModelForm):
         return instance
     def clean(self):
         data=super().clean()
+        files=[file for field in ('base_documents','manager_documents','security_documents') for file in (data.get(field) or [])]
+        if len(files)>10:self.add_error(None,'За один раз можно добавить до 10 файлов во все разделы документов.')
         requested_stage=data.get('stage')
         if requested_stage and requested_stage!=self._original_stage and not allowed_manual_stage(self._original_stage,requested_stage):
             self.add_error('stage','Для возврата по маршруту используйте отдельное действие «Вернуть этап» и укажите причину.')
