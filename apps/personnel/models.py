@@ -3,6 +3,7 @@ from django.conf import settings
 from django.db import models
 from django.core.exceptions import ValidationError
 from core.models import BaseCompanyModel
+from .russian_cities import normalize_city_name
 
 
 DISPATCHER_BULK_CLEANUP_REASON = 'Административная массовая очистка диспетчерской'
@@ -286,7 +287,7 @@ class BaseCity(PersonnelModel):
         ordering=['name','pk']
         constraints=[models.UniqueConstraint(fields=['company','name'],name='personnel_unique_base_city')]
     def clean(self):
-        super().clean();self.name=' '.join(self.name.split())
+        super().clean();self.name=normalize_city_name(self.name)
         if not self.name:raise ValidationError({'name':'Укажите название города.'})
         duplicate=any(' '.join(value.split()).casefold()==self.name.casefold() for value in
             type(self).objects.filter(company_id=self.company_id).exclude(pk=self.pk).values_list('name',flat=True)) if self.company_id else False

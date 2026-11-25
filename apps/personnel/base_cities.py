@@ -4,10 +4,11 @@ from django.db import transaction
 from django.utils import timezone
 
 from .models import BaseCity,MovementReviewRequest,TalentPoolCandidate
+from .russian_cities import normalize_city_name
 
 
 def normalize_name(value):
-    return ' '.join(str(value or '').split())
+    return normalize_city_name(value)
 
 
 def usage_map(company):
