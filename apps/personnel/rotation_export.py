@@ -19,6 +19,8 @@ GREY = 'E9EEF2'
 WHITE = 'FFFFFF'
 TEXT = '17324D'
 BORDER = Side(style='thin', color='C7D7E3')
+MONTHS = ('', 'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь')
+WEEKDAYS = ('Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс')
 
 
 def safe_value(value):
@@ -77,6 +79,51 @@ def status_fill(row):
     return PALE_BLUE
 
 
+def calendar_fill(code, day, number):
+    normalized = str(code or '').strip().upper()
+    if normalized == 'ДП':
+        return ACCENT
+    if normalized in {'МО', 'В', '0'}:
+        return GREY
+    try:
+        if float(normalized) > 0:
+            return GREEN
+    except (TypeError, ValueError):
+        if normalized == 'МВ':
+            return GREEN
+    if normalized:
+        return YELLOW
+    if day.weekday() >= 5:
+        return 'F4F4F4'
+    return WHITE if number % 2 else PALE_BLUE
+
+
+def add_calendar_months(sheet, row, schedule_dates):
+    sheet.merge_cells(start_row=row, start_column=1, end_row=row, end_column=12)
+    label = sheet.cell(row, 1, f'График по дням с {schedule_dates[0]:%d.%m.%Y}')
+    label.fill = PatternFill('solid', fgColor=LIGHT_BLUE)
+    label.font = Font(bold=True, color=TEXT, size=9)
+    label.alignment = Alignment(horizontal='right', vertical='center')
+    label.border = Border(left=BORDER, right=BORDER, top=BORDER, bottom=BORDER)
+    start = 0
+    while start < len(schedule_dates):
+        month = schedule_dates[start].month
+        year = schedule_dates[start].year
+        end = start
+        while end + 1 < len(schedule_dates) and schedule_dates[end + 1].month == month:
+            end += 1
+        first_column = 13 + start
+        last_column = 13 + end
+        sheet.merge_cells(start_row=row, start_column=first_column, end_row=row, end_column=last_column)
+        cell = sheet.cell(row, first_column, f'{MONTHS[month]} {year}')
+        cell.fill = PatternFill('solid', fgColor=TEAL_DARK if month % 2 else TEAL)
+        cell.font = Font(bold=True, color=WHITE, size=9)
+        cell.alignment = Alignment(horizontal='center', vertical='center')
+        cell.border = Border(left=BORDER, right=BORDER, top=BORDER, bottom=BORDER)
+        start = end + 1
+    sheet.row_dimensions[row].height = 22
+
+
 def detail_values(row, number):
     person = row.get('person')
     return [
@@ -95,15 +142,17 @@ def detail_values(row, number):
     ]
 
 
-def add_pretty_sheet(book, *, day, groups, summary, summary_stats, selected_camps, filters):
+def add_pretty_sheet(book, *, day, schedule_dates, groups, summary, summary_stats, selected_camps, filters):
     sheet = book.active
     sheet.title = 'Состав персонала'
     sheet.sheet_view.showGridLines = False
     sheet.sheet_properties.tabColor = TEAL
-    sheet.freeze_panes = 'B12'
+    # Keep the employee data and the report header visible while scrolling the
+    # daily calendar horizontally and vertically.
+    sheet.freeze_panes = 'M12'
     sheet.page_setup.orientation = 'landscape'
     sheet.page_setup.paperSize = sheet.PAPERSIZE_A4
-    sheet.page_setup.fitToWidth = 1
+    sheet.page_setup.fitToWidth = 0
     sheet.page_setup.fitToHeight = 0
     sheet.sheet_properties.pageSetUpPr.fitToPage = True
     sheet.print_options.horizontalCentered = True
@@ -182,13 +231,23 @@ def add_pretty_sheet(book, *, day, groups, summary, summary_stats, selected_camp
         plans = '; '.join(f"{plan['kind']} · {plan['object'].name}" for plan in group.get('plans', [])) or 'План не задан'
         merged_line(sheet, row_number, plans, fill=PALE_BLUE, color='52708A', height=23)
         row_number += 1
+        add_calendar_months(sheet, row_number, schedule_dates)
+        row_number += 1
         for column, header in enumerate(headers, start=1):
             cell = sheet.cell(row_number, column, header)
             cell.fill = PatternFill('solid', fgColor=TEAL)
             cell.font = Font(bold=True, color=WHITE, size=9)
             cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
             cell.border = Border(left=BORDER, right=BORDER, top=BORDER, bottom=BORDER)
-        sheet.row_dimensions[row_number].height = 34
+        for offset, current in enumerate(schedule_dates):
+            column = 13 + offset
+            cell = sheet.cell(row_number, column, f'{current:%d.%m}\n{WEEKDAYS[current.weekday()]}')
+            header_fill = TEAL_DARK if current == day else ('7E98A9' if current.weekday() >= 5 else TEAL)
+            cell.fill = PatternFill('solid', fgColor=header_fill)
+            cell.font = Font(bold=True, color=WHITE, size=8)
+            cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+            cell.border = Border(left=BORDER, right=BORDER, top=BORDER, bottom=BORDER)
+        sheet.row_dimensions[row_number].height = 36
         row_number += 1
 
         first_detail = row_number
@@ -203,6 +262,12 @@ def add_pretty_sheet(book, *, day, groups, summary, summary_stats, selected_camp
                     cell.border = Border(left=BORDER, right=BORDER, top=BORDER, bottom=BORDER)
                     if column in (1, 3, 5, 8, 9, 10, 11):
                         cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+                for offset, (current, code) in enumerate(zip(schedule_dates, item.get('export_calendar_codes', []))):
+                    cell = sheet.cell(row_number, 13 + offset, safe_value(code))
+                    cell.fill = PatternFill('solid', fgColor=calendar_fill(code, current, number))
+                    cell.font = Font(size=8, bold=current == day, color=TEXT)
+                    cell.alignment = Alignment(horizontal='center', vertical='center')
+                    cell.border = Border(left=BORDER, right=BORDER, top=BORDER, bottom=BORDER)
                 sheet.row_dimensions[row_number].height = 34
                 row_number += 1
         else:
@@ -218,7 +283,10 @@ def add_pretty_sheet(book, *, day, groups, summary, summary_stats, selected_camp
     widths = [5, 30, 15, 20, 9, 22, 22, 15, 15, 15, 17, 27]
     for index, width in enumerate(widths, start=1):
         sheet.column_dimensions[get_column_letter(index)].width = width
-    sheet.print_area = f'A1:L{max(row_number - 1, 11)}'
+    for offset in range(len(schedule_dates)):
+        sheet.column_dimensions[get_column_letter(13 + offset)].width = 5.5
+    last_column = get_column_letter(12 + len(schedule_dates))
+    sheet.print_area = f'A1:{last_column}{max(row_number - 1, 11)}'
 
 
 def add_raw_sheet(book, *, day, rows, days):
@@ -255,7 +323,7 @@ def add_raw_sheet(book, *, day, rows, days):
 
 def build_rotation_workbook(**context):
     book = Workbook()
-    add_pretty_sheet(book, **{key: context[key] for key in ('day', 'groups', 'summary', 'summary_stats', 'selected_camps', 'filters')})
+    add_pretty_sheet(book, **{key: context[key] for key in ('day', 'schedule_dates', 'groups', 'summary', 'summary_stats', 'selected_camps', 'filters')})
     add_raw_sheet(book, **{key: context[key] for key in ('day', 'rows', 'days')})
     stream = BytesIO()
     book.save(stream)

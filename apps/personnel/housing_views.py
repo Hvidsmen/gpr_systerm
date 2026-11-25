@@ -1108,10 +1108,24 @@ def roster_export(request):
     summaries={normalized(group['name']):group['summary'] for group in summary_groups}
     for group in groups:group['summary']=summaries.get(normalized(group['name']),group['summary'])
     summary=summary_metrics(summary_stats,summary_groups,plan_context['housing_plan_months'])
+    # The detailed calendar in the workbook starts on the export date and uses
+    # the same forecast boundary as the dispatcher calendar on the portal.
+    calendar_end=date(day.year+1,12,31)
+    schedule_dates=[day+timedelta(days=offset) for offset in range((calendar_end-day).days+1)]
+    from .rotation_calendar import stays_by_person
+    person_ids=[row['person'].pk for row in rows if row.get('person')]
+    history=stays_by_person(request.user.company,person_ids)
+    for row in rows:
+        person=row.get('person')
+        values_calendar=calendar_for(
+            row.get('schedule_slot') or row.get('slot'),person=person,
+            start=day,end=calendar_end,stays=history.get(person.pk,[]) if person else [],
+        )
+        row['export_calendar_codes']=[values_calendar.get(str(current),'') for current in schedule_dates]
     state_labels=dict(selector.fields['state'].choices)
     filters={**data,'state_label':state_labels.get(data.get('state',''),''),'roster_view':'groups' if raw.get('roster_view')=='groups' else 'positions'}
     from .rotation_export import build_rotation_workbook
-    content=build_rotation_workbook(day=day,rows=rows,days=days,groups=groups,summary=summary,summary_stats=summary_stats,selected_camps=camps,filters=filters)
+    content=build_rotation_workbook(day=day,rows=rows,days=days,schedule_dates=schedule_dates,groups=groups,summary=summary,summary_stats=summary_stats,selected_camps=camps,filters=filters)
     response=HttpResponse(content,content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     response['Content-Disposition']=f'attachment; filename="personnel_dispatcher_{day:%Y-%m-%d}.xlsx"'
     return response

@@ -1,5 +1,5 @@
 from unittest.mock import patch
-from datetime import timedelta
+from datetime import date,timedelta
 from io import BytesIO
 from django.core.exceptions import ValidationError
 from django.test import TestCase,Client
@@ -217,9 +217,14 @@ class HousingTests(TestCase):
         self.assertEqual(book['Данные']['C2'].value,self.person.full_name)
         self.assertEqual(book.sheetnames,['Состав персонала','Данные'])
         self.assertEqual(book.active['A1'].value,'Диспетчерская персонала · Состав персонала')
-        self.assertEqual(book.active.freeze_panes,'B12')
+        self.assertEqual(book.active.freeze_panes,'M12')
         self.assertFalse(book.active.sheet_view.showGridLines)
         self.assertTrue(any(self.position.name in str(cell.value) for row in book.active.iter_rows() for cell in row if cell.value))
+        header_row=next(row for row in range(1,book.active.max_row+1) if book.active.cell(row,1).value=='№')
+        self.assertEqual(book.active.cell(header_row,13).value,f'{timezone.localdate():%d.%m}\n'+('Пн','Вт','Ср','Чт','Пт','Сб','Вс')[timezone.localdate().weekday()])
+        employee_row=next(row for row in range(1,book.active.max_row+1) if book.active.cell(row,2).value==self.person.full_name)
+        self.assertEqual(book.active.cell(employee_row,13).value,book['Данные'].cell(2,14+timezone.localdate().day).value)
+        self.assertEqual(book.active.max_column,12+(date(timezone.localdate().year+1,12,31)-timezone.localdate()).days+1)
         self.employee.zup_full_name='=HYPERLINK("bad")';self.employee.save()
         response=self.client.get(reverse('personnel:housing_export'),{'camp':self.a.pk,'date':str(self.day)})
         self.assertTrue(openpyxl.load_workbook(BytesIO(response.content))['Данные']['C2'].value.startswith("'="))
