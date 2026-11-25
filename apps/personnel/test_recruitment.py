@@ -85,7 +85,8 @@ class RecruitmentTests(TestCase):
         candidate=TalentPoolCandidate.objects.create(company=self.company,full_name='Иванов Иван Иванович',phone='8 999 123-45-67',
             stage='SELECTED',position=self.position,construction_object=self.obj,created_by=self.recruiter)
         employee=Employee.objects.create(company=self.company,zup_full_name='Иванов Иван Иванович',phone='+7 999 123-45-67',
-            employee_number='Z-100',zup_ref='a'*32,zup_server='mssql',zup_database='zup',zup_synced_at=timezone.now())
+            employee_number='Z-100',zup_ref='a'*32,zup_server='mssql',zup_database='zup',zup_synced_at=timezone.now(),
+            zup_card={'hire_date':self.day.isoformat()})
         self.assertEqual(reconcile_company(self.company,self.recruiter),{'linked':1,'ambiguous':0})
         candidate.refresh_from_db()
         self.assertEqual(candidate.stage,'EMPLOYED');self.assertEqual(candidate.employed_employee,employee);self.assertFalse(candidate.is_active)
@@ -95,7 +96,7 @@ class RecruitmentTests(TestCase):
         self.assertEqual(groups['Магазин'],0);self.assertEqual(groups['Трудоустроены'],1)
         response=self.client.post(reverse('personnel:recruitment_candidate_stage',args=[candidate.pk]),{'stage':'SCREENING'})
         self.assertEqual(response.status_code,400);candidate.refresh_from_db();self.assertEqual(candidate.stage,'EMPLOYED')
-        employee.is_active=False;employee.zup_card={'dismissal_date':'2026-11-25'}
+        employee.is_active=False;employee.zup_card={'hire_date':self.day.isoformat(),'dismissal_date':'2026-11-25'}
         employee.save(update_fields=['is_active','zup_card'])
         self.assertEqual(reconcile_company(self.company,self.recruiter),{'linked':0,'ambiguous':0})
         candidate.refresh_from_db();self.assertEqual(candidate.stage,'DISMISSED');self.assertFalse(candidate.is_active)
@@ -115,7 +116,8 @@ class RecruitmentTests(TestCase):
             candidates.append(TalentPoolCandidate.objects.create(company=self.company,full_name='Петров Пётр Петрович',phone='',stage='SELECTED',
                 position=self.position,construction_object=self.obj,created_by=self.recruiter,notes=suffix))
         employee=Employee.objects.create(company=self.company,zup_full_name='Петров Пётр Петрович',employee_number='Z-200',
-            zup_ref='b'*32,zup_server='mssql',zup_database='zup',zup_synced_at=timezone.now())
+            zup_ref='b'*32,zup_server='mssql',zup_database='zup',zup_synced_at=timezone.now(),
+            zup_card={'hire_date':self.day.isoformat()})
         self.assertEqual(reconcile_company(self.company,self.recruiter),{'linked':0,'ambiguous':1})
         self.assertFalse(TalentPoolCandidate.objects.filter(employed_employee__isnull=False).exists())
         for candidate in candidates:
@@ -143,7 +145,8 @@ class RecruitmentTests(TestCase):
         candidate=TalentPoolCandidate.objects.create(company=self.company,full_name='Сидоров Семён Сергеевич',stage='SELECTED',
             position=self.position,construction_object=self.obj,created_by=self.recruiter)
         employees=[Employee.objects.create(company=self.company,zup_full_name='Сидоров Семён Сергеевич',employee_number=f'Z-30{index}',
-            zup_ref=str(index)*32,zup_server='mssql',zup_database='zup',zup_synced_at=timezone.now()) for index in (1,2)]
+            zup_ref=str(index)*32,zup_server='mssql',zup_database='zup',zup_synced_at=timezone.now(),
+            zup_card={'hire_date':self.day.isoformat()}) for index in (1,2)]
         self.assertEqual(reconcile_company(self.company,self.recruiter),{'linked':0,'ambiguous':1})
         candidate.refresh_from_db();self.assertEqual(candidate.stage,'SELECTED')
         self.assertEqual(candidate.source_data[REVIEW_KEY]['employee_ids'],[row.pk for row in employees])
@@ -151,6 +154,43 @@ class RecruitmentTests(TestCase):
         self.client.post(reverse('personnel:recruitment_candidate_employment',args=[candidate.pk]),{'employee':employees[1].pk})
         candidate.refresh_from_db();self.assertEqual(candidate.stage,'EMPLOYED');self.assertEqual(candidate.employed_employee,employees[1])
         self.assertTrue(TalentPoolStageEvent.objects.filter(candidate=candidate,to_stage='EMPLOYED',note__contains='ручной проверки').exists())
+
+    def test_preliminary_zup_card_does_not_mean_employment_until_hire_date(self):
+        from .recruitment_employment import reconcile_company
+        candidate=TalentPoolCandidate.objects.create(company=self.company,full_name='Исламов Марат Рафаилович',
+            phone='89990001122',stage='SELECTED',position=self.position,construction_object=self.obj,created_by=self.recruiter)
+        employee=Employee.objects.create(company=self.company,zup_full_name=candidate.full_name,phone='+7 999 000-11-22',
+            employee_number='PRE-001',zup_ref='e'*32,zup_server='mssql',zup_database='zup',zup_synced_at=timezone.now(),
+            zup_card={})
+        self.assertEqual(reconcile_company(self.company,self.recruiter),{'linked':1,'ambiguous':0})
+        candidate.refresh_from_db()
+        self.assertEqual(candidate.stage,'SELECTED');self.assertTrue(candidate.is_active)
+        self.assertEqual(candidate.employed_employee,employee);self.assertIsNone(candidate.employed_at)
+        self.assertFalse(candidate.source_data['employment_match']['employment_confirmed'])
+        self.assertTrue(candidate.stage_events.filter(from_stage='SELECTED',to_stage='SELECTED',
+            note__contains='предварительная карточка ЗУП').exists())
+        self.client.force_login(self.recruiter)
+        card=self.client.get(reverse('personnel:recruitment_candidate_card',args=[candidate.pk]))
+        self.assertContains(card,'Предварительная карточка ЗУП');self.assertContains(card,'Факт приёма ещё не подтверждён')
+        self.assertNotContains(card,'Трудоустройство подтверждено ЗУП')
+        employee.zup_card={'hire_date':self.day.isoformat()};employee.save(update_fields=['zup_card'])
+        self.assertEqual(reconcile_company(self.company,self.recruiter),{'linked':0,'ambiguous':0})
+        candidate.refresh_from_db();self.assertEqual(candidate.stage,'EMPLOYED');self.assertFalse(candidate.is_active)
+        self.assertIsNotNone(candidate.employed_at);self.assertTrue(candidate.source_data['employment_match']['employment_confirmed'])
+
+    def test_reconciliation_corrects_old_false_employed_stage_without_hire_date(self):
+        from .recruitment_employment import reconcile_company
+        employee=Employee.objects.create(company=self.company,zup_full_name='Ошибочно Трудоустроенный',employee_number='PRE-002',
+            zup_ref='f'*32,zup_server='mssql',zup_database='zup',zup_synced_at=timezone.now(),zup_card={})
+        candidate=TalentPoolCandidate.objects.create(company=self.company,full_name=employee.display_name,stage='EMPLOYED',is_active=False,
+            employed_employee=employee,employed_at=timezone.now(),position=self.position,construction_object=self.obj,created_by=self.recruiter)
+        TalentPoolStageEvent.objects.create(company=self.company,candidate=candidate,from_stage='READY',to_stage='EMPLOYED',
+            actor=None,note='Старое ошибочное правило')
+        self.assertEqual(reconcile_company(self.company,self.recruiter),{'linked':0,'ambiguous':0})
+        candidate.refresh_from_db();self.assertEqual(candidate.stage,'READY');self.assertTrue(candidate.is_active)
+        self.assertIsNone(candidate.employed_at)
+        self.assertTrue(candidate.stage_events.filter(from_stage='EMPLOYED',to_stage='READY',
+            note__contains='факт приёма не подтверждён').exists())
     def test_candidate_can_be_sent_from_vacancy_into_arrival_workflow(self):
         from apps.planning.models import WorkTask
         prep=self.preparation()

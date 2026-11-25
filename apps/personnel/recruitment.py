@@ -364,7 +364,9 @@ def ensure_pool_candidate(user,row,candidate,chosen=None):
 def sync_pool_candidate(candidate,stage=None):
     if not candidate.pool_candidate_id:return
     pool=candidate.pool_candidate;stage=stage or candidate.status
-    if pool.employed_employee_id:stage='EMPLOYED' if pool.employed_employee.is_active else 'DISMISSED'
+    if pool.employed_employee_id:
+        from .recruitment_employment import employment_confirmed
+        if employment_confirmed(pool.employed_employee):stage='EMPLOYED' if pool.employed_employee.is_active else 'DISMISSED'
     pool.stage=stage
     pool.full_name=candidate.full_name
     if candidate.phone:pool.phone=candidate.phone
@@ -448,7 +450,9 @@ def handoff(user, candidate_id, revision):
     if row.closed_at and row.close_kind=='FORCED':raise ValidationError('Подбор по заявке закрыт принудительно.')
     c=RecruitmentCandidate.objects.select_for_update().get(pk=c.pk)
     if c.pool_candidate_id and c.pool_candidate.employed_employee_id:
-        raise ValidationError('Кандидат уже найден среди трудоустроенных сотрудников ЗУП.')
+        from .recruitment_employment import employment_confirmed
+        if employment_confirmed(c.pool_candidate.employed_employee):
+            raise ValidationError('Кандидат уже найден среди трудоустроенных сотрудников ЗУП.')
     existing=ArrivalPreparation.objects.filter(candidate=c).first()
     if existing:return existing
     if c.revision!=revision:raise ValidationError('Кандидата уже изменили. Обновите страницу.')

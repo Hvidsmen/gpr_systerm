@@ -84,7 +84,7 @@ class EmployeesImportTests(TestCase):
             stage='SELECTED',created_by=self.admin)
         run=self.run_record()
         self.assertIsNone(run.created_by)
-        result=apply_employees(run,{'employees':[self.row()]})
+        result=apply_employees(run,{'employees':[self.row(hire_date='2026-01-15')]})
         candidate.refresh_from_db()
         self.assertEqual(result['talent_pool_employed'],{'linked':1,'ambiguous':0})
         self.assertEqual(candidate.stage,'EMPLOYED')

@@ -22,7 +22,8 @@ from .recruitment_models import (POOL_UNAVAILABLE_STAGES,RECRUITMENT_SYSTEM_STAG
     RECRUITMENT_APPROVAL_FLOW)
 from .recruitment_stage_flow import (WorkingDayCalendar,advance as advance_approval_stage,
     allowed_manual_stage,return_to_stage as return_approval_stage,stage_status)
-from .recruitment_employment import REVIEW_KEY,link_candidate,remove_employee_from_other_reviews,review_employee_ids,review_employees
+from .recruitment_employment import (REVIEW_KEY,employment_confirmed,link_candidate,remove_employee_from_other_reviews,
+    review_employee_ids,review_employees)
 
 
 FUNNEL_GROUPS=[
@@ -406,6 +407,7 @@ def candidate_card(request,pk):
         'security_documents':[doc for doc in documents if doc.kind=='SECURITY'],
         'has_applications':bool(row.vacancy_candidates.all()),'employment_candidates':employment_candidates,
         'employment_review':(row.source_data or {}).get(REVIEW_KEY),'employment_return_to':'card',
+        'employment_is_confirmed':employment_confirmed(row.employed_employee),
         'employment_can_link':role_code(request.user) in service.RECRUIT,
         'stage_sla':stage_status(row),'approval_flow':RECRUITMENT_APPROVAL_FLOW})
 
@@ -446,6 +448,7 @@ def candidate_inline(request,pk):
         'can_administer_pool':role_code(request.user)=='ADMIN' and inline_source!='ready',
         'inline_source':inline_source,'saved':saved,'employment_candidates':review_employees(row),
         'employment_review':(row.source_data or {}).get(REVIEW_KEY),'employment_return_to':'list',
+        'employment_is_confirmed':employment_confirmed(row.employed_employee),
         'employment_can_link':can_edit,'stage_sla':stage_status(row)},status=status)
 
 

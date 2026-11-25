@@ -1,9 +1,11 @@
 """Reconcile recruitment candidates with authoritative active ZUP employees."""
 from collections import defaultdict
+from datetime import date
 from django.db import transaction
 from django.utils import timezone
 from apps.resources.models import Employee
 from .models import ArrivalPreparation,TalentPoolCandidate,TalentPoolStageEvent
+from .recruitment_models import POOL_UNAVAILABLE_STAGES
 
 REVIEW_KEY='employment_review'
 
@@ -19,6 +21,19 @@ def normalized_phone(value):
 def normalized_date(value):
     if not value:return ''
     return value.isoformat() if hasattr(value,'isoformat') else str(value)[:10]
+
+
+def confirmed_hire_date(employee,on_date=None):
+    """A ZUP directory card is not employment until its hire date has started."""
+    raw=(employee.zup_card or {}).get('hire_date')
+    if isinstance(raw,date):hire_date=raw
+    else:
+        try:hire_date=date.fromisoformat(str(raw or '')[:10])
+        except (TypeError,ValueError):return None
+    return hire_date if hire_date<=(on_date or timezone.localdate()) else None
+
+
+def employment_confirmed(employee,on_date=None):return bool(employee and confirmed_hire_date(employee,on_date))
 
 
 def review_employee_ids(candidate):
@@ -59,17 +74,24 @@ def link_candidate(candidate,employee,actor,method):
     if TalentPoolCandidate.objects.filter(company_id=candidate.company_id,employed_employee=employee).exclude(pk=candidate.pk).exists():
         raise ValueError('Этот сотрудник ЗУП уже связан с другой карточкой кандидата.')
     now=timezone.now();previous=candidate.stage;source=dict(candidate.source_data or {})
+    hire_date=confirmed_hire_date(employee);confirmed=bool(hire_date)
     source.pop(REVIEW_KEY,None)
     source['employment_match']={'employee_id':employee.pk,'employee_number':employee.employee_number,'zup_ref':employee.zup_ref,
-        'matched_by':method,'matched_at':now.isoformat()}
-    candidate.stage='EMPLOYED';candidate.is_active=False;candidate.employed_employee=employee
-    candidate.employed_at=employee.zup_synced_at or now;candidate.source_data=source
+        'matched_by':method,'matched_at':now.isoformat(),'hire_date':hire_date.isoformat() if hire_date else '',
+        'employment_confirmed':confirmed}
+    candidate.employed_employee=employee;candidate.source_data=source
+    if confirmed:
+        candidate.stage='EMPLOYED';candidate.is_active=False;candidate.employed_at=employee.zup_synced_at or now
+    else:candidate.employed_at=None
     candidate.archived_at=None;candidate.archived_by=None
     candidate.save(update_fields=['stage','is_active','employed_employee','employed_at','source_data','archived_at','archived_by','updated_at'])
-    if previous!='EMPLOYED':
+    if confirmed and previous!='EMPLOYED':
         prefix='Автоматически найден' if method!='ручная проверка соответствия' else 'Связан после ручной проверки'
         TalentPoolStageEvent.objects.create(company=candidate.company,candidate=candidate,from_stage=previous,to_stage='EMPLOYED',actor=actor,
             note=f'{prefix} в ЗУП: {employee.display_name}, табельный № {employee.employee_number or "не указан"}.')
+    elif not confirmed:
+        TalentPoolStageEvent.objects.create(company=candidate.company,candidate=candidate,from_stage=previous,to_stage=previous,actor=actor,
+            note=f'Найдена предварительная карточка ЗУП: {employee.display_name}, табельный № {employee.employee_number or "не указан"}. Факт приёма не подтверждён — этап воронки сохранён.')
     return candidate
 
 
@@ -77,10 +99,31 @@ def sync_linked_stage(candidate,actor):
     """Mirror the authoritative active/dismissed state of a linked ZUP card."""
     employee=candidate.employed_employee
     if not employee:return False
+    hire_date=confirmed_hire_date(employee);source=dict(candidate.source_data or {})
+    match=dict(source.get('employment_match') or {})
+    match.update({'employee_id':employee.pk,'employee_number':employee.employee_number,'zup_ref':employee.zup_ref,
+        'hire_date':hire_date.isoformat() if hire_date else '','employment_confirmed':bool(hire_date)})
+    source['employment_match']=match
+    if not hire_date:
+        previous=candidate.stage
+        target=previous
+        if previous in {'EMPLOYED','DISMISSED'}:
+            event=candidate.stage_events.filter(to_stage='EMPLOYED').exclude(from_stage__in={'EMPLOYED','DISMISSED'}).order_by('-created_at','-pk').first()
+            target=event.from_stage if event else 'SELECTED'
+        changed=previous!=target or candidate.employed_at is not None or candidate.source_data!=source
+        if not changed:return False
+        candidate.stage=target;candidate.is_active=target not in POOL_UNAVAILABLE_STAGES
+        candidate.employed_at=None;candidate.source_data=source
+        candidate.save(update_fields=['stage','is_active','employed_at','source_data','updated_at'])
+        if previous!=target:
+            TalentPoolStageEvent.objects.create(company=candidate.company,candidate=candidate,from_stage=previous,to_stage=target,actor=actor,
+                note='Скорректировано по ЗУП: есть карточка и табельный номер, но факт приёма не подтверждён. Восстановлен предыдущий этап воронки.')
+        return True
     target='EMPLOYED' if employee.is_active else 'DISMISSED'
-    if candidate.stage==target and not candidate.is_active:return False
+    if candidate.stage==target and not candidate.is_active and candidate.source_data==source:return False
     previous=candidate.stage;candidate.stage=target;candidate.is_active=False
-    candidate.save(update_fields=['stage','is_active','updated_at'])
+    candidate.employed_at=candidate.employed_at or employee.zup_synced_at or timezone.now();candidate.source_data=source
+    candidate.save(update_fields=['stage','is_active','employed_at','source_data','updated_at'])
     if previous!=target:
         dismissal=(employee.zup_card or {}).get('dismissal_date')
         note=('Автоматически по данным ЗУП: сотрудник снова действует.' if target=='EMPLOYED' else
