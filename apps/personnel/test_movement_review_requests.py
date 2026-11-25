@@ -211,7 +211,7 @@ class MovementReviewRequestTests(TestCase):
         self.client.force_login(self.reviewer)
         dispatcher_page=self.client.get(reverse('personnel:housing'))
         self.assertEqual(dispatcher_page.status_code,200)
-        self.assertContains(dispatcher_page,'Состав, назначения и графики')
+        self.assertContains(dispatcher_page,'Состав, привязки и графики')
         self.assertNotContains(dispatcher_page,'Заявки из диспетчерской')
         page=self.client.get(reverse('personnel:movement_reviews'))
         self.assertEqual(page.status_code,200)
@@ -880,10 +880,10 @@ class MovementReviewRequestTests(TestCase):
                 request_number=f'bulk-{number}'))
         self.client.force_login(self.reviewer);url=reverse('personnel:movement_excel_sites')
         page=self.client.get(url)
-        self.assertContains(page,'Массовое назначение');self.assertContains(page,'Выбрать ненастроенные')
+        self.assertContains(page,'Массовая привязка');self.assertContains(page,'Выбрать ненастроенные')
         response=self.client.post(url,{'action':'bulk_assign','selected_sites':['Участок А','Участок Б'],
             'construction_object':self.site.pk,'camp':self.camp.pk},follow=True)
-        self.assertContains(response,'Назначено соответствий: 2 (новых: 2)')
+        self.assertContains(response,'Привязано соответствий: 2 (новых: 2)')
         self.assertContains(response,'Обновлено необработанных Excel-заявок: 2')
         self.assertEqual(MovementExcelSiteMapping.objects.count(),2)
         for row in rows[:2]:

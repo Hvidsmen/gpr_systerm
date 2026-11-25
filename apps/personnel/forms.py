@@ -298,7 +298,7 @@ class MovementReviewForm(StyledModelForm):
             self.fields['employment_kind'].required=False
             self.fields['employment_kind'].widget=forms.HiddenInput()
         else:self.fields.pop('departure_destination')
-        self.fields['planning_position_name'].group_heading='Сотрудник и назначение'
+        self.fields['planning_position_name'].group_heading='Сотрудник и привязка'
         self.fields['planning_position_name'].group_help='Проверьте должности, проект и обслуживающее местонахождение.'
         self.fields['base_city_choice'].group_heading='Контакты и заявка'
         self.fields['base_city_choice'].group_help='Город назначения и телефон. Номер заявки присваивается автоматически.'
@@ -386,7 +386,7 @@ class MovementExcelSiteBulkMappingForm(forms.Form):
     def clean(self):
         data=super().clean();obj=data.get('construction_object');camp=data.get('camp')
         if obj and camp:
-            probe=MovementExcelSiteMapping(company=self.company,source_site='Массовое назначение',
+            probe=MovementExcelSiteMapping(company=self.company,source_site='Массовая привязка',
                 construction_object=obj,camp=camp)
             try:probe.clean()
             except forms.ValidationError as exc:

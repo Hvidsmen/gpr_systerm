@@ -22,7 +22,7 @@ STATUS_HELP={
     'MV':'Сотрудник числится на вахте по фактическим перемещениям; если их нет — по начальным данным. Это не означает, что сегодня у него рабочий день.',
     'MO':'Сотрудник на межвахтовом отдыхе по фактическому выезду; если перемещений нет — по начальным данным.',
     'TRAVEL':'В индивидуальном графике на выбранную дату стоит ДП — день пути. Направление поездки может быть на вахту или с вахты.',
-    'VACANCY':'Штатная строка без назначенного сотрудника. Это свободная позиция из таблицы, а не рассчитанный дефицит по СМГ или ГПР.',
+    'VACANCY':'Штатная строка без привязанного сотрудника. Это свободная позиция из таблицы, а не рассчитанный дефицит по СМГ или ГПР.',
     'WORKING':'В индивидуальном графике на выбранную дату стоят рабочие часы больше нуля или МВ. Это рабочий день по графику, а не подтверждённый производственный факт.',
     'UNKNOWN':'По фактическим перемещениям и начальным данным нельзя определить, находится сотрудник на вахте или на МО. Уточните исходный статус или оформите перемещение.',
 }
@@ -287,7 +287,7 @@ def rotation_rows(company,camps,day,*,construction_object=None,query='',position
         departing=trip=='DEPARTING' or outgoing==str(day) or person_id in departures or bool(slot and slot.departure_date==day)
         employee=person.employee if person.employee_id else None
         assignment_removed=not planned and person_id in removed_people
-        role=slot.planning_position.name if slot and slot.planning_position_id else 'Без назначения' if assignment_removed else str(employee.position) if employee and employee.position_id else display_slot.group.position if display_slot else 'Должность не указана'
+        role=slot.planning_position.name if slot and slot.planning_position_id else 'Без привязки' if assignment_removed else str(employee.position) if employee and employee.position_id else display_slot.group.position if display_slot else 'Должность не указана'
         rows.append({'person':person,'slot':slot,'schedule_slot':graph_slot,'stay':active,'camp':camp,'position':employee.position if employee and employee.position_id else None,'position_label':role,
             'planning_position_id':slot.planning_position_id if slot else None,'assignment_object':slot.construction_object if slot and slot.construction_object_id else None,
             'assignment_removed':assignment_removed,

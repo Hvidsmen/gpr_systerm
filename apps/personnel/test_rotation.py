@@ -124,7 +124,7 @@ class RotationTests(TestCase):
         StaffingSlot.objects.create(company=self.company,group=self.group,person=self.second_person,housing_camp=self.a,status='МО',calendar={str(self.day):'ДП'})
         StaffingSlot.objects.create(company=self.company,group=self.group,housing_camp=self.a,pattern=self.pattern)
         page=self.client.get(reverse('personnel:housing'),{'camp':self.a.pk,'date':str(self.day)})
-        self.assertContains(page,'Состав персонала');self.assertContains(page,'Назначено сотрудников');self.assertContains(page,'Открытых вакансий')
+        self.assertContains(page,'Состав персонала');self.assertContains(page,'Привязано сотрудников');self.assertContains(page,'Открытых вакансий')
         for key in ['working','travelling','people','on_shift','rest','vacancies','arriving','departing','no_schedule']:
             self.assertEqual(sum(g[key] for g in page.context['position_groups']),page.context['rotation_stats'][key])
         self.assertContains(page,'data-position-summary-value="assigned">2</strong>',html=False)

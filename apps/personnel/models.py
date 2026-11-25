@@ -107,16 +107,16 @@ class StaffingSlot(PersonnelModel):
     group = models.ForeignKey(StaffingGroup, on_delete=models.CASCADE, related_name='slots')
     person = models.ForeignKey(Person, null=True, blank=True, on_delete=models.PROTECT, related_name='assignments', verbose_name='Сотрудник (пусто — вакансия)')
     planning_position = models.ForeignKey('resources.Brigade', on_delete=models.PROTECT, null=True, blank=True, related_name='personnel_assignments', verbose_name='Должность плана')
-    construction_object = models.ForeignKey('projects.ConstructionObject', on_delete=models.PROTECT, null=True, blank=True, related_name='personnel_assignments', verbose_name='Объект назначения')
-    assigned_from = models.DateField('Назначен с', null=True, blank=True)
-    assigned_until = models.DateField('Назначен по (включительно)', null=True, blank=True)
+    construction_object = models.ForeignKey('projects.ConstructionObject', on_delete=models.PROTECT, null=True, blank=True, related_name='personnel_assignments', verbose_name='Объект привязки')
+    assigned_from = models.DateField('Привязан с', null=True, blank=True)
+    assigned_until = models.DateField('Привязан по (включительно)', null=True, blank=True)
     initial_movement = models.ForeignKey('HousingEvent', on_delete=models.PROTECT, null=True, blank=True, related_name='initial_assignments', verbose_name='Начальная запись перемещения')
-    previous_assignment = models.OneToOneField('self', on_delete=models.PROTECT, null=True, blank=True, related_name='next_assignment', verbose_name='Предыдущее назначение')
+    previous_assignment = models.OneToOneField('self', on_delete=models.PROTECT, null=True, blank=True, related_name='next_assignment', verbose_name='Предыдущая привязка')
     replaced_on = models.DateField('Заменено с', null=True, blank=True)
-    assigned_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+', verbose_name='Назначил')
-    cancelled_at = models.DateTimeField('Назначение удалено', null=True, blank=True)
-    cancelled_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+', verbose_name='Удалил назначение')
-    cancellation_reason = models.TextField('Комментарий к удалению назначения', blank=True)
+    assigned_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+', verbose_name='Привязал')
+    cancelled_at = models.DateTimeField('Привязка удалена', null=True, blank=True)
+    cancelled_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='+', verbose_name='Удалил привязку')
+    cancellation_reason = models.TextField('Комментарий к удалению привязки', blank=True)
     camp = models.CharField('Местонахождение из исходного файла', max_length=100, blank=True)
     housing_camp = models.ForeignKey('Camp', on_delete=models.PROTECT, null=True, blank=True, verbose_name='Местонахождение')
     status = models.CharField('Текущий статус', choices=STATUSES, max_length=10, blank=True)
@@ -138,15 +138,15 @@ class StaffingSlot(PersonnelModel):
         if not self.person_id and self.status: raise ValidationError('У вакансии не может быть фактического статуса.')
         if self.planning_position_id or self.construction_object_id:
             if not all((self.planning_position_id,self.construction_object_id,self.person_id,self.housing_camp_id,self.assigned_from)):
-                raise ValidationError('Для назначения укажите сотрудника, должность плана, объект, местонахождение и дату начала.')
+                raise ValidationError('Для привязки укажите сотрудника, должность плана, объект, местонахождение и дату начала.')
         if self.assigned_until and (not self.assigned_from or self.assigned_until < self.assigned_from):
-            raise ValidationError({'assigned_until':'Дата окончания не может быть раньше начала назначения.'})
+            raise ValidationError({'assigned_until':'Дата окончания не может быть раньше начала привязки.'})
         if self.initial_movement_id and self.initial_movement.person_id!=self.person_id:
             raise ValidationError({'initial_movement':'Начальная запись принадлежит другому сотруднику.'})
         if self.replaced_on and (not self.assigned_from or self.replaced_on<self.assigned_from):
-            raise ValidationError({'replaced_on':'Смена назначения не может быть раньше его начала.'})
+            raise ValidationError({'replaced_on':'Смена привязки не может быть раньше её начала.'})
         if self.previous_assignment_id and (self.previous_assignment_id==self.pk or self.previous_assignment.person_id!=self.person_id):
-            raise ValidationError({'previous_assignment':'Предыдущее назначение должно принадлежать этому сотруднику.'})
+            raise ValidationError({'previous_assignment':'Предыдущая привязка должна принадлежать этому сотруднику.'})
 
 
 class MovementRecommendationOverride(PersonnelModel):

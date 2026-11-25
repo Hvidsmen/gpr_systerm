@@ -8,6 +8,6 @@
 <div class="row g-3">
 {% include 'personnel/_admin_cleanup_card.html' with action='pool' title='Все кандидаты' count=cleanup_counts.pool description='Удаляет все карточки из реестра кандидатов. Кандидаты в существующих заявках отвязываются от карточек реестра.' %}
 {% include 'personnel/_admin_cleanup_card.html' with action='requests' title='Все заявки персонала' count=cleanup_counts.requests description='Удаляет заявки на подбор, кандидатов заявок, заявки заезда/выезда, рекомендации и заявки изменения графика. Фактические перемещения сохраняются.' %}
-{% include 'personnel/_admin_cleanup_card.html' with action='assignments' title='Сотрудники и вакансии диспетчерской' count=cleanup_counts.assignments description='Удаляет все назначения и все пустые штатные строки из диспетчерской. Планы ГПР/СМГ, справочник сотрудников и история местонахождений сохраняются.' %}
+{% include 'personnel/_admin_cleanup_card.html' with action='assignments' title='Сотрудники и вакансии диспетчерской' count=cleanup_counts.assignments description='Удаляет все привязки и все пустые штатные строки из диспетчерской. Планы ГПР/СМГ, справочник сотрудников и история местонахождений сохраняются.' %}
 </div>
 {% endblock %}

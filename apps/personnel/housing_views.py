@@ -66,7 +66,7 @@ def remove_from_dispatch(request,pk):
     pending=person.movement_review_requests.filter(status='OPEN').exists()
     if request.method=='POST':
         reason=' '.join(request.POST.get('reason','').split())
-        if active:messages.error(request,'Сначала удалите действующее назначение сотрудника.')
+        if active:messages.error(request,'Сначала удалите действующую привязку сотрудника.')
         elif pending:messages.error(request,'Сначала завершите или отмените открытую заявку перевахты.')
         elif not reason:messages.error(request,'Укажите причину удаления из диспетчерской.')
         else:
@@ -707,7 +707,7 @@ def movement_excel_sites(request):
                         'construction_object_id':bulk_form.cleaned_data['construction_object'].pk,
                         'camp_id':bulk_form.cleaned_data['camp'].pk,'pending_requests_updated':changed},
                     comment='Массово настроены соответствия участков Excel')
-            messages.success(request,f'Назначено соответствий: {len(saved_rows)} (новых: {created}). Обновлено необработанных Excel-заявок: {changed}.')
+            messages.success(request,f'Привязано соответствий: {len(saved_rows)} (новых: {created}). Обновлено необработанных Excel-заявок: {changed}.')
             return redirect('personnel:movement_excel_sites')
     if request.method=='POST' and action!='bulk_assign' and form.is_valid():
         with transaction.atomic():
@@ -1013,7 +1013,7 @@ def schedule(request,pk):
             slot=form.cleaned_data.get('slot');pattern=form.cleaned_data.get('pattern')
             if slot:
                 slot=StaffingSlot.objects.select_for_update().get(pk=slot.pk,person=person,company=person.company)
-                if slot.cancelled_at:form.add_error('slot','Назначение удалено. Обновите страницу графика.')
+                if slot.cancelled_at:form.add_error('slot','Привязка удалена. Обновите страницу графика.')
                 if pattern and pattern.board_id!=slot.group.board_id:
                     form.add_error('pattern','График должен принадлежать таблице выбранной строки. Выберите другую строку или очистите выбор строки.')
             if not form.errors:

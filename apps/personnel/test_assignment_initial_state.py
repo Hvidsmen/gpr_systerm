@@ -132,7 +132,7 @@ class AssignmentInitialStateTests(TestCase):
         self.assertEqual(slot.initial_movement,event)
         self.assertEqual((slot.status,slot.arrival_date,slot.departure_date),('МВ',corrected,None))
         from apps.production.history_models import FactRevision
-        self.assertTrue(FactRevision.objects.filter(actor=self.hr,reason__contains='Исправлен статус назначения').exists())
+        self.assertTrue(FactRevision.objects.filter(actor=self.hr,reason__contains='Исправлен статус привязки').exists())
 
     def test_edit_can_change_on_shift_to_rest_with_related_dates(self):
         arrival=self.day-timedelta(days=20);departure=self.day-timedelta(days=5)

@@ -71,7 +71,7 @@ class AssignmentChangeTests(TestCase):
         self.source.assigned_until=self.day;self.source.save()
         future=self.day+timedelta(days=1)
         self.client.post(reverse('personnel:plan_assignment_create'),{**self.base,'planning_position':self.new_role.pk,'assigned_from':str(future),'pattern':''})
-        self.assertContains(self.client.post(self.url,self.payload()),'уже есть назначение')
+        self.assertContains(self.client.post(self.url,self.payload()),'уже есть привязка')
         self.source.refresh_from_db();self.assertIsNone(self.source.replaced_on);self.assertFalse(StaffingSlot.objects.filter(previous_assignment=self.source).exists())
 
     def test_new_object_and_camp_do_not_create_actual_transfer(self):
@@ -92,10 +92,10 @@ class AssignmentChangeTests(TestCase):
     def test_historical_assignment_is_readonly_and_history_shows_actor(self):
         self.client.post(self.url,self.payload())
         url=reverse('personnel:plan_assignment_edit',args=[self.source.pk]);response=self.client.get(url)
-        self.assertTrue(response.context['historical']);self.assertNotContains(response,'Сохранить назначение')
-        self.source.refresh_from_db();self.assertContains(self.client.post(url,{**self.base,'version':self.source.updated_at.isoformat()}),'Прежнее назначение сохранено в истории')
+        self.assertTrue(response.context['historical']);self.assertNotContains(response,'Сохранить привязку')
+        self.source.refresh_from_db();self.assertContains(self.client.post(url,{**self.base,'version':self.source.updated_at.isoformat()}),'Прежняя привязка сохранена в истории')
         response=self.client.get(reverse('personnel:housing_history',args=[self.source.person_id]))
-        self.assertContains(response,'История назначений');self.assertContains(response,self.old_role.name);self.assertContains(response,self.new_role.name);self.assertContains(response,self.hr.username)
+        self.assertContains(response,'История привязок');self.assertContains(response,self.old_role.name);self.assertContains(response,self.new_role.name);self.assertContains(response,self.hr.username)
 
     def test_correcting_successor_start_updates_both_sides_atomically(self):
         when=self.day+timedelta(days=5);self.client.post(self.url,self.payload(when));child=self.successor()

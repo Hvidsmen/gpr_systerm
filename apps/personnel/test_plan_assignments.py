@@ -32,11 +32,11 @@ class PlanAssignmentTests(TestCase):
         self.assertTrue(response.context['form']['pattern'].is_hidden)
         self.assertTrue(response.context['form']['assigned_from'].is_hidden)
         self.assertContains(response,'1. Сотрудник и должность')
-        self.assertContains(response,'2. Место назначения')
+        self.assertContains(response,'2. Место привязки')
         self.assertContains(response,'Текущий статус сотрудника')
         self.assertNotContains(response,'По дату включительно')
         self.assertNotContains(response,'Без личного графика')
-        self.assertNotContains(response,'Дата начала назначения')
+        self.assertNotContains(response,'Дата начала привязки')
 
     def test_create_uses_today_and_ignores_submitted_start_date(self):
         requested=timezone.localdate()+timedelta(days=30)
@@ -119,7 +119,7 @@ class PlanAssignmentTests(TestCase):
         def ids(day):return [r['person'].employee_id for r in rotation_rows(self.company,[self.a],day)[0] if r.get('planning_position_id')]
         self.assertEqual(ids(self.day),[]);self.assertEqual(ids(self.day+timedelta(days=1)),[self.second_employee.pk]);self.assertEqual(ids(self.day+timedelta(days=3)),[])
         response=self.client.post(self.url,{**self.data,'construction_object':self.obj2.pk})
-        self.assertContains(response,'уже есть назначение');self.assertEqual(StaffingSlot.objects.filter(planning_position=self.role).count(),1)
+        self.assertContains(response,'уже есть привязка');self.assertEqual(StaffingSlot.objects.filter(planning_position=self.role).count(),1)
 
     def test_employee_filter_hides_overlapping_assignments_and_restores_available_people(self):
         available=Employee.objects.create(company=self.company,last_name='Свободный',first_name='Сотрудник',is_active=True)
@@ -177,7 +177,7 @@ class PlanAssignmentTests(TestCase):
     def test_bound_form_keeps_stale_selected_employee_for_clear_overlap_error(self):
         self.client.post(self.url,self.data)
         response=self.client.post(self.url,{**self.data,'construction_object':self.obj2.pk})
-        self.assertContains(response,'уже есть назначение')
+        self.assertContains(response,'уже есть привязка')
         self.assertEqual(str(response.context['form']['employee'].value()),str(self.second_employee.pk))
 
     def test_edit_uses_version_and_preserves_employee_identity(self):
@@ -215,7 +215,7 @@ class PlanAssignmentTests(TestCase):
         from apps.planning.models import GlobalPlanVersion
         GlobalPlanVersion.objects.create(company=self.company,construction_object=self.obj,start_date=self.day.replace(day=1),end_date=self.day+timedelta(days=100),version_number=1,status='APPROVED',snapshot={'works':[],'resources':{'labor':[{'date':str(self.day),'brigade_id':self.role.pk,'planned_workers':'1','label':self.role.name}]}})
         response=self.client.get(reverse('personnel:housing'),{'camp':self.a.pk,'date':self.day})
-        self.assertContains(response,'Назначить сотрудника')
+        self.assertContains(response,'Привязать сотрудника')
         self.assertContains(response,f'planning_position={self.role.pk}&amp;construction_object={self.obj.pk}')
         response=self.client.get(self.url,{'planning_position':self.role.pk,'construction_object':self.obj.pk,'housing_camp':self.a.pk,'assigned_from':self.day})
         self.assertEqual(response.status_code,200);self.assertEqual(str(response.context['form']['planning_position'].value()),str(self.role.pk))

@@ -20,7 +20,7 @@ from . import housing
 from .views import access
 from .employee_widgets import RemoteEmployeeSelect
 
-REMOVED_ASSIGNMENT_SCHEDULE_COMMENT='График сохранён при удалении назначения.'
+REMOVED_ASSIGNMENT_SCHEDULE_COMMENT='График сохранён при удалении привязки.'
 
 
 def conflict_employee_links(company,employee):
@@ -78,7 +78,7 @@ class InitialStateForm(forms.Form):
         for name in ('arrival_date','departure_date'):
             when=data.get(name)
             if when and when>timezone.localdate():self.add_error(name,'Фактическая дата не может быть в будущем.')
-            elif when and self.as_of and when>self.as_of:self.add_error(name,'Начальное состояние должно быть известно на дату начала назначения. Уточните дату назначения или перемещения.')
+            elif when and self.as_of and when>self.as_of:self.add_error(name,'Начальное состояние должно быть известно на дату начала привязки. Уточните дату привязки или перемещения.')
         return data
 
 
@@ -142,9 +142,9 @@ def _correct_recorded_state(user,row,data):
     if latest and latest.pk!=event.pk:
         raise ValidationError('После зафиксированного статуса есть более поздние перемещения. Исправьте их в истории размещений или в разделе «Заезд / выезд».')
     old_state='MV' if event.kind in {'ARRIVAL','TRANSFER'} else 'MO'
-    reason=(f'Отменён ошибочный выезд {event.date:%d.%m.%Y}; подтверждён статус «На вахте» с {arrival:%d.%m.%Y} через назначение.'
+    reason=(f'Отменён ошибочный выезд {event.date:%d.%m.%Y}; подтверждён статус «На вахте» с {arrival:%d.%m.%Y} через привязку.'
         if old_state=='MO' and state=='MV' else
-        f'Исправлен статус назначения: {"На вахте" if old_state=="MV" else "МО"} → {"На вахте" if state=="MV" else "МО"}.')
+        f'Исправлен статус привязки: {"На вахте" if old_state=="MV" else "МО"} → {"На вахте" if state=="MV" else "МО"}.')
     with history_actor(user,reason):
         stay=CampStay.objects.select_for_update().filter(pk=event.stay_id,company=user.company).first() if event.stay_id else None
         arrival_event=(HousingEvent.objects.select_for_update().filter(company=user.company,person=row.person,
@@ -227,7 +227,7 @@ def initialize_state(user,row,data,*,enforce_assignment_start=True,allow_correct
         as_of=row.assigned_from if enforce_assignment_start else None,
     )
     if not check.is_valid():raise ValidationError(check.errors.as_text())
-    comment='Начальное состояние при первом назначении на должность плана.'
+    comment='Начальное состояние при первой привязке к должности плана.'
     if has_movements(row.person):
         fact_day=arrival if state=='MV' else departure
         current=housing.present_stays(user.company,fact_day).filter(person=row.person).select_related('camp').first()
@@ -240,7 +240,7 @@ def initialize_state(user,row,data,*,enforce_assignment_start=True,allow_correct
             if later_stays.exists() or later_events.exists():
                 raise ValidationError(f'После выезда {current.departed_on:%d.%m.%Y} есть более поздние перемещения. Исправьте их в истории размещений или оформите новый заезд отдельной датой.')
             old_departure=current.departed_on
-            correction=f'Отменён ошибочный выезд {old_departure:%d.%m.%Y}; подтверждён статус «На вахте» с {current.arrived_on:%d.%m.%Y} через назначение.'
+            correction=f'Отменён ошибочный выезд {old_departure:%d.%m.%Y}; подтверждён статус «На вахте» с {current.arrived_on:%d.%m.%Y} через привязку.'
             with history_actor(user,correction):
                 current.departed_on=None;current.save(update_fields=['departed_on','updated_at'])
                 HousingEvent.objects.create(company=user.company,person=row.person,date=timezone.localdate(),kind='CANCEL',from_camp=current.camp,stay=current,comment=correction,recorded_by=user)
@@ -276,17 +276,17 @@ def initialize_state(user,row,data,*,enforce_assignment_start=True,allow_correct
 class AssignmentForm(forms.Form):
     employee=forms.ModelChoiceField(label='Сотрудник',queryset=Employee.objects.none(),widget=InitialEmployeeSelect(attrs={'data-remote-scope':'assignment'}))
     planning_position=forms.ModelChoiceField(label='Должность из СМГ / ГПР',queryset=Brigade.objects.none())
-    construction_object=forms.ModelChoiceField(label='Объект назначения',queryset=ConstructionObject.objects.none())
-    housing_camp=forms.ModelChoiceField(label='Местонахождение назначения',queryset=Camp.objects.none(),help_text='Выберите местонахождение, обслуживающее этот объект или его подобъекты. Начальные заезд / выезд ниже относятся к этому местонахождению.')
-    assigned_from=forms.DateField(label='Назначить с',widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
-    assigned_until=forms.DateField(label='По дату включительно',required=False,widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}),help_text='Оставьте пустым для назначения без даты окончания.')
+    construction_object=forms.ModelChoiceField(label='Объект привязки',queryset=ConstructionObject.objects.none())
+    housing_camp=forms.ModelChoiceField(label='Местонахождение привязки',queryset=Camp.objects.none(),help_text='Выберите местонахождение, обслуживающее этот объект или его подобъекты. Начальные заезд / выезд ниже относятся к этому местонахождению.')
+    assigned_from=forms.DateField(label='Привязать с',widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
+    assigned_until=forms.DateField(label='По дату включительно',required=False,widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}),help_text='Оставьте пустым для привязки без даты окончания.')
     pattern=forms.ModelChoiceField(label='График',queryset=ShiftPattern.objects.none(),required=False,empty_label='Без личного графика — вахтовый цикл из ЗУП, если задан',help_text='Личный график имеет приоритет над вахтовым циклом из кадровых данных.')
     version=forms.CharField(required=False,widget=forms.HiddenInput)
 
     def __init__(self,*args,company,row=None,**kwargs):
         super().__init__(*args,**kwargs)
-        # Эти значения сохраняются для совместимости со старыми назначениями,
-        # но больше не редактируются в форме назначения.
+        # Эти значения сохраняются для совместимости со старыми привязками,
+        # но больше не редактируются в форме привязки.
         self.fields['assigned_until'].widget=forms.HiddenInput()
         self.fields['pattern'].widget=forms.HiddenInput()
         self.company=company;self.row=row
@@ -316,7 +316,7 @@ class AssignmentForm(forms.Form):
                         .filter(Q(pk=selected_employee)|Q(pk__in=employees.values('pk'))))
         self.fields['employee'].queryset=employees.annotate(has_personnel_history=Exists(history)).select_related('position').order_by('last_name','first_name','pk')
         self.fields['employee'].label_from_instance=lambda e:e.display_name+(' · '+str(e.position) if e.position_id else '')+(' · № '+e.employee_number if e.employee_number else '')
-        self.fields['employee'].help_text='Показаны действующие сотрудники без другого назначения на выбранный период. Штатная должность не изменится.'
+        self.fields['employee'].help_text='Показаны действующие сотрудники без другой привязки на выбранный период. Штатная должность не изменится.'
         self.fields['planning_position'].queryset=Brigade.objects.filter(company=company).order_by('name','pk')
         self.fields['construction_object'].queryset=ConstructionObject.objects.filter(company=company).select_related('project').order_by('project__name','name','pk')
         self.fields['construction_object'].label_from_instance=lambda obj:f'{obj.project.name} · {obj.name}'
@@ -332,7 +332,7 @@ class AssignmentForm(forms.Form):
 
     def clean(self):
         data=super().clean();start,end=data.get('assigned_from'),data.get('assigned_until')
-        if end and start and end<start:self.add_error('assigned_until','Дата окончания раньше начала назначения.')
+        if end and start and end<start:self.add_error('assigned_until','Дата окончания раньше начала привязки.')
         obj,camp=data.get('construction_object'),data.get('housing_camp')
         if obj and camp and not camp.object_links.filter(company=self.company,construction_object_id__in=object_scope(obj)).exists():
             self.add_error('housing_camp','Это местонахождение не обслуживает выбранный объект или его подобъекты.')
@@ -348,7 +348,7 @@ def save_assignment(user,data,row_id=None,initial_state=None,previous=None):
     role=Brigade.objects.get(company=user.company,pk=data['planning_position'].pk)
     obj=ConstructionObject.objects.get(company=user.company,pk=data['construction_object'].pk)
     camp=Camp.objects.get(company=user.company,is_active=True,pk=data['housing_camp'].pk)
-    if not camp.object_links.filter(company=user.company,construction_object_id__in=object_scope(obj)).exists():raise ValidationError('Местонахождение не обслуживает объект назначения.')
+    if not camp.object_links.filter(company=user.company,construction_object_id__in=object_scope(obj)).exists():raise ValidationError('Местонахождение не обслуживает объект привязки.')
     person=housing.person_for(employee)
     if person.dispatcher_removed_at:
         removal={'removed_at':person.dispatcher_removed_at.isoformat(),'removed_by':person.dispatcher_removed_by_id,
@@ -359,27 +359,27 @@ def save_assignment(user,data,row_id=None,initial_state=None,previous=None):
         person.save(update_fields=['dispatcher_removed_at','dispatcher_removed_by','dispatcher_removal_reason','updated_at'])
         from apps.audit.models import AuditLog
         AuditLog.objects.create(user=user,action='UPDATE',entity_type='personnel.Person',entity_id=str(person.pk),
-            old_value=removal,new_value={'dispatcher_removed_at':None},comment='Карточка восстановлена при новом назначении сотрудника.')
+            old_value=removal,new_value={'dispatcher_removed_at':None},comment='Карточка восстановлена при новой привязке сотрудника.')
     row=StaffingSlot.objects.select_for_update().get(pk=row_id,company=user.company,person=person,planning_position__isnull=False) if row_id else None
-    if row and row.cancelled_at:raise ValidationError('Назначение удалено. Создайте новое назначение сотрудника.')
-    if row and row.replaced_on:raise ValidationError('Назначение уже заменено. Откройте действующее назначение сотрудника.')
-    if row and row.updated_at.isoformat()!=data['version']:raise ValidationError('Назначение уже изменено другим пользователем. Обновите страницу.')
+    if row and row.cancelled_at:raise ValidationError('Привязка удалена. Создайте новую привязку сотрудника.')
+    if row and row.replaced_on:raise ValidationError('Привязка уже заменена. Откройте действующую привязку сотрудника.')
+    if row and row.updated_at.isoformat()!=data['version']:raise ValidationError('Привязка уже изменена другим пользователем. Обновите страницу.')
     start,end=data['assigned_from'],data.get('assigned_until')
     if row and row.previous_assignment_id and start!=row.assigned_from:
         predecessor=StaffingSlot.objects.select_for_update().get(pk=row.previous_assignment_id,company=user.company,person=person)
         if not predecessor.cancelled_at:
-            if predecessor.replaced_on!=row.assigned_from:raise ValidationError('История назначения уже изменилась. Обновите страницу.')
-            if start<predecessor.assigned_from:raise ValidationError('Дата перехода не может быть раньше начала предыдущего назначения.')
+            if predecessor.replaced_on!=row.assigned_from:raise ValidationError('История привязки уже изменилась. Обновите страницу.')
+            if start<predecessor.assigned_from:raise ValidationError('Дата перехода не может быть раньше начала предыдущей привязки.')
             predecessor.replaced_on=start;predecessor.save(update_fields=['replaced_on','updated_at'])
     overlap=person.assignments.filter(company=user.company,planning_position__isnull=False,cancelled_at=None).exclude(pk=row_id).exclude(replaced_on=F('assigned_from')).filter(Q(assigned_until=None)|Q(assigned_until__gte=start)).filter(Q(replaced_on=None)|Q(replaced_on__gt=start))
     if end:overlap=overlap.filter(Q(assigned_from=None)|Q(assigned_from__lte=end))
     existing=overlap.first()
     if existing:
         if not row and (existing.planning_position_id,existing.construction_object_id,existing.housing_camp_id,existing.assigned_from,existing.assigned_until)==(role.pk,obj.pk,camp.pk,start,end):
-            if previous and existing.previous_assignment_id!=previous.pk:raise ValidationError('На этот период уже есть другое назначение. Обновите список сотрудника.')
+            if previous and existing.previous_assignment_id!=previous.pk:raise ValidationError('На этот период уже есть другая привязка. Обновите список сотрудника.')
             initialize_state(user,existing,initial_state)
             return existing
-        raise ValidationError('На этот период у сотрудника уже есть назначение. Измените его или сначала укажите дату окончания.')
+        raise ValidationError('На этот период у сотрудника уже есть привязка. Измените её или сначала укажите дату окончания.')
     board=Board.objects.filter(company=user.company,name='Назначения по плану',import_digest='').order_by('pk').first()
     if board is None:board=Board.objects.create(company=user.company,name='Назначения по плану')
     group=board.groups.filter(position=role.name).first() or StaffingGroup.objects.create(company=user.company,board=board,position=role.name)
@@ -403,18 +403,18 @@ def save_assignment(user,data,row_id=None,initial_state=None,previous=None):
 def change_assignment(user,source_id,data):
     Company.objects.filter(pk=user.company_id).update(name=F('name'))
     source=StaffingSlot.objects.select_for_update().select_related('person__employee','pattern').get(pk=source_id,company=user.company,planning_position__isnull=False)
-    if source.cancelled_at:raise ValidationError('Назначение удалено. Создайте новое назначение сотрудника.')
-    if data['employee'].pk!=source.person.employee_id:raise ValidationError('При смене назначения сотрудник не меняется.')
+    if source.cancelled_at:raise ValidationError('Привязка удалена. Создайте новую привязку сотрудника.')
+    if data['employee'].pk!=source.person.employee_id:raise ValidationError('При смене привязки сотрудник не меняется.')
     values=(data['planning_position'].pk,data['construction_object'].pk,data['housing_camp'].pk,data['assigned_from'],data.get('assigned_until'))
     successor=StaffingSlot.objects.filter(company=user.company,previous_assignment=source).first()
     if successor:
-        if successor.cancelled_at:raise ValidationError('Новое назначение уже удалено. Создайте отдельное назначение сотрудника.')
+        if successor.cancelled_at:raise ValidationError('Новая привязка уже удалена. Создайте отдельную привязку сотрудника.')
         if (successor.planning_position_id,successor.construction_object_id,successor.housing_camp_id,successor.assigned_from,successor.assigned_until)==values:return successor
-        raise ValidationError('По этому назначению уже оформлена смена. Откройте новое назначение сотрудника.')
-    if source.updated_at.isoformat()!=data['version']:raise ValidationError('Назначение уже изменено другим пользователем. Обновите страницу.')
-    if source.replaced_on:raise ValidationError('Это назначение уже заменено.')
-    if data['assigned_from']<source.assigned_from:raise ValidationError('Дата смены не может быть раньше начала прежнего назначения.')
-    if (source.planning_position_id,source.construction_object_id,source.housing_camp_id)==values[:3]:raise ValidationError('Выберите новую должность, объект или местонахождение. Для исправления дат используйте «Назначение».')
+        raise ValidationError('По этой привязке уже оформлена смена. Откройте новую привязку сотрудника.')
+    if source.updated_at.isoformat()!=data['version']:raise ValidationError('Привязка уже изменена другим пользователем. Обновите страницу.')
+    if source.replaced_on:raise ValidationError('Эта привязка уже заменена.')
+    if data['assigned_from']<source.assigned_from:raise ValidationError('Дата смены не может быть раньше начала прежней привязки.')
+    if (source.planning_position_id,source.construction_object_id,source.housing_camp_id)==values[:3]:raise ValidationError('Выберите новую должность, объект или местонахождение. Для исправления дат используйте «Привязка».')
     source.replaced_on=data['assigned_from'];source.save(update_fields=['replaced_on','updated_at'])
     # The surrounding transaction rolls this boundary back if the new period conflicts.
     return save_assignment(user,{**data,'pattern':source.pattern},previous=source)
@@ -439,7 +439,7 @@ def remove_assignment(user,row_id,data):
     Company.objects.filter(pk=user.company_id).update(name=F('name'))
     row=StaffingSlot.objects.select_for_update().get(pk=row_id,company=user.company,planning_position__isnull=False)
     if row.cancelled_at:return row
-    if row.updated_at.isoformat()!=data['version']:raise ValidationError('Назначение уже изменено другим пользователем. Обновите страницу перед удалением.')
+    if row.updated_at.isoformat()!=data['version']:raise ValidationError('Привязка уже изменена другим пользователем. Обновите страницу перед удалением.')
     person=Person.objects.select_for_update().get(pk=row.person_id,company=user.company)
     # Preserve the personal schedule independently of the removed plan connection.
     if person.schedule_slot_id==row.pk:
@@ -462,7 +462,7 @@ def remove(request,pk):
         try:saved=remove_assignment(request.user,pk,form.cleaned_data)
         except (ValidationError,IntegrityError,ObjectDoesNotExist) as exc:form.add_error(None,'; '.join(exc.messages) if isinstance(exc,ValidationError) else 'Данные изменились одновременно. Обновите страницу.')
         else:
-            messages.success(request,'Назначение удалено. Сотрудник, график и фактические перемещения сохранены; запись доступна в истории назначений.')
+            messages.success(request,'Привязка удалена. Сотрудник, график и фактические перемещения сохранены; запись доступна в истории привязок.')
             return redirect(reverse('personnel:housing')+f'?camp={saved.housing_camp_id}#roster')
     return render(request,'personnel/assignment_remove.html',{'form':form,'row':row,'personnel_section':'management'})
 
@@ -491,7 +491,7 @@ def edit(request,pk=None):
     initial_form=InitialStateForm(state_data,prefix='initial',initial=state_initial) if not historical else None
     if request.method=='POST':
         valid=form.is_valid()
-        if historical:form.add_error(None,'Назначение удалено.' if row.cancelled_at else 'Прежнее назначение сохранено в истории. Изменяйте действующее назначение.');valid=False
+        if historical:form.add_error(None,'Привязка удалена.' if row.cancelled_at else 'Прежняя привязка сохранена в истории. Изменяйте действующую привязку.');valid=False
         if initial_form:
             initial_form.as_of=None if row else form.cleaned_data.get('assigned_from')
             valid=initial_form.is_valid() and valid
@@ -508,15 +508,15 @@ def edit(request,pk=None):
             if state:
                 label='На вахте' if state=='MV' else 'МО — межвахтовый отдых'
                 action='Фактический заезд' if state=='MV' else 'Фактический выезд на МО'
-                if row:messages.success(request,f'Назначение сохранено. Статус: «{label}». Связанные даты фактического движения обновлены.')
-                else:messages.success(request,f'Назначение сохранено. Статус: «{label}». {action} оформлен на {fact_day:%d.%m.%Y}.')
-            else:messages.success(request,'Сотрудник назначен. Фактический заезд оформляется отдельно.')
+                if row:messages.success(request,f'Привязка сохранена. Статус: «{label}». Связанные даты фактического движения обновлены.')
+                else:messages.success(request,f'Привязка сохранена. Статус: «{label}». {action} оформлен на {fact_day:%d.%m.%Y}.')
+            else:messages.success(request,'Сотрудник привязан. Фактический заезд оформляется отдельно.')
             query={'camp':saved.housing_camp_id}
             if fact_day:query['date']=fact_day.isoformat()
             return redirect(reverse('personnel:housing')+'?'+urlencode(query)+'#roster')
     if historical:
         for field in form.fields.values():field.disabled=True
-    return render(request,'personnel/plan_assignment.html',{'form':form,'initial_form':initial_form,'row':row,'historical':historical,'conflict_links':conflict_links,'personnel_section':'management','title':'Удалённое назначение' if row and row.cancelled_at else 'Прежнее назначение' if historical else 'Изменить назначение' if row else 'Назначить сотрудника'})
+    return render(request,'personnel/plan_assignment.html',{'form':form,'initial_form':initial_form,'row':row,'historical':historical,'conflict_links':conflict_links,'personnel_section':'management','title':'Удалённая привязка' if row and row.cancelled_at else 'Прежняя привязка' if historical else 'Изменить привязку' if row else 'Привязать сотрудника'})
 
 
 @login_required
@@ -527,8 +527,8 @@ def change(request,pk):
     if source.cancelled_at and request.method=='GET':return redirect('personnel:plan_assignment_edit',pk=source.pk)
     form=AssignmentForm(request.POST if request.method=='POST' else None,company=request.user.company,row=source)
     form.fields.pop('pattern');form.fields['assigned_from'].label='Сменить с'
-    form.fields['housing_camp'].help_text='Местонахождение планового назначения. Фактический перевод оформляется в «Заезд / выезд».'
-    form.fields['employee'].help_text='Меняется назначение этого сотрудника. Штатная должность в справочнике сохраняется.'
+    form.fields['housing_camp'].help_text='Местонахождение плановой привязки. Фактический перевод оформляется в «Заезд / выезд».'
+    form.fields['employee'].help_text='Меняется привязка этого сотрудника. Штатная должность в справочнике сохраняется.'
     if request.method=='GET':
         try:when=forms.DateField().clean(request.GET.get('date') or timezone.localdate())
         except ValidationError:when=timezone.localdate()
@@ -538,7 +538,7 @@ def change(request,pk):
         try:saved=change_assignment(request.user,pk,form.cleaned_data)
         except (ValidationError,IntegrityError,ObjectDoesNotExist) as exc:form.add_error(None,'; '.join(exc.messages) if isinstance(exc,ValidationError) else 'Данные изменились одновременно. Обновите страницу.')
         else:
-            messages.success(request,f'Назначение изменено с {saved.assigned_from:%d.%m.%Y}. Прежнее назначение сохранено в истории.')
+            messages.success(request,f'Привязка изменена с {saved.assigned_from:%d.%m.%Y}. Прежняя привязка сохранена в истории.')
             return redirect(reverse('personnel:housing')+f'?camp={saved.housing_camp_id}#roster')
     successor=StaffingSlot.objects.filter(company=request.user.company,previous_assignment=source).first()
     return render(request,'personnel/assignment_change.html',{'form':form,'source':source,'successor':successor,'personnel_section':'management'})

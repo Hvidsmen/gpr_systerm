@@ -251,7 +251,7 @@ class RecruitmentTests(TestCase):
         self.assertEqual(response.context['arrival_recommendation_count'],2)
         self.assertEqual(response.context['departure_recommendation_count'],1)
         self.assertNotContains(response,'recruitment-section-tabs',html=False)
-        self.assertContains(response,'Состав, назначения и графики')
+        self.assertContains(response,'Состав, привязки и графики')
         self.assertContains(response,'Мои заявки')
     def test_new_candidate_with_ready_date_can_be_opened_for_arrival_by_dispatcher(self):
         row=self.row();service.assign_request(self.hr_head,row.pk,self.recruiter,row.revision)

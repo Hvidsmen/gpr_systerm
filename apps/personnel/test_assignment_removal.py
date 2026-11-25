@@ -36,28 +36,28 @@ class AssignmentRemovalTests(TestCase):
         response=self.client.get(reverse('personnel:housing'),{'camp':self.a.pk,'date':self.day})
         group=next(g for g in response.context['position_groups'] if g['name']==self.role.name)
         self.assertEqual(group['people'],1);self.assertEqual(group['plans'],[])
-        links=re.findall(r'href="([^"]+)">Назначить сотрудника</a>',response.content.decode())
+        links=re.findall(r'href="([^"]+)">Привязать сотрудника</a>',response.content.decode())
         params=[parse_qs(urlsplit(html.unescape(link)).query) for link in links]
         self.assertTrue(any(p.get('planning_position')==[str(self.role.pk)] and p.get('construction_object')==[str(self.obj.pk)] for p in params))
         self.assertEqual(self.client.post(self.create,{**self.data,'employee':self.employee.pk}).status_code,302)
         response=self.client.get(reverse('personnel:housing'),{'camp':self.a.pk,'date':self.day})
         group=next(g for g in response.context['position_groups'] if g['name']==self.role.name)
-        self.assertEqual(group['people'],2);self.assertContains(response,'Назначить сотрудника')
+        self.assertEqual(group['people'],2);self.assertContains(response,'Привязать сотрудника')
 
     def test_general_add_button_available_after_last_connection_is_removed(self):
         self.client.post(self.url,self.payload())
         response=self.client.get(reverse('personnel:housing'),{'camp':self.a.pk,'date':self.day})
-        self.assertContains(response,'Назначить сотрудника')
+        self.assertContains(response,'Привязать сотрудника')
 
     def test_roster_has_one_assignment_action_and_edit_page_contains_change_and_remove(self):
         response=self.client.get(reverse('personnel:housing'),{'camp':self.a.pk})
         content=response.content.decode()
-        self.assertEqual(content.count(f'href="{reverse("personnel:plan_assignment_edit",args=[self.row.pk])}">Назначение</a>'),1)
+        self.assertEqual(content.count(f'href="{reverse("personnel:plan_assignment_edit",args=[self.row.pk])}">Привязка</a>'),1)
         self.assertNotIn(reverse('personnel:plan_assignment_change',args=[self.row.pk]),content)
         self.assertNotIn(reverse('personnel:plan_assignment_remove',args=[self.row.pk]),content)
         edit=self.client.get(reverse('personnel:plan_assignment_edit',args=[self.row.pk]))
-        self.assertContains(edit,'Сменить назначение с выбранной даты')
-        self.assertContains(edit,'Удалить назначение')
+        self.assertContains(edit,'Сменить привязку с выбранной даты')
+        self.assertContains(edit,'Удалить привязку')
 
     def test_add_uses_assignment_camp_when_actual_camp_differs_in_multi_camp_view(self):
         CampStay.objects.create(company=self.company,person=self.row.person,camp=self.b,arrived_on=self.day)
@@ -90,16 +90,16 @@ class AssignmentRemovalTests(TestCase):
         self.client.post(self.url,self.payload())
         rows=rotation_rows(self.company,[self.a],self.day)[0]
         person_row=next(row for row in rows if row.get('person') and row['person'].pk==self.row.person_id)
-        self.assertEqual(person_row['position_label'],'Без назначения')
+        self.assertEqual(person_row['position_label'],'Без привязки')
         self.assertEqual(person_row['staff_position_label'],position.name)
         groups=position_headers(self.company,rows,PlanAssignmentTests.context(self))
         planned=next(group for group in groups if group['name']==self.role.name)
-        unassigned=next(group for group in groups if group['name']=='Без назначения')
+        unassigned=next(group for group in groups if group['name']=='Без привязки')
         self.assertEqual(planned['people'],0);self.assertEqual([p['shortage'] for p in planned['plans']],[1,1])
         self.assertEqual(unassigned['people'],1);self.assertEqual(unassigned['plans'],[])
 
     def test_get_only_confirms_post_retains_record_and_audits_actor(self):
-        self.assertContains(self.client.get(self.url),'Удалить назначение')
+        self.assertContains(self.client.get(self.url),'Удалить привязку')
         self.row.refresh_from_db();self.assertIsNone(self.row.cancelled_at)
         self.assertEqual(self.client.post(self.url,self.payload()).status_code,302)
         self.row.refresh_from_db();self.assertIsNotNone(self.row.cancelled_at)
@@ -156,11 +156,11 @@ class AssignmentRemovalTests(TestCase):
     def test_deleted_record_cannot_be_edited_changed_or_selected_as_schedule(self):
         self.client.post(self.url,self.payload());self.row.refresh_from_db()
         response=self.client.get(reverse('personnel:plan_assignment_edit',args=[self.row.pk]))
-        self.assertContains(response,'Удалённое назначение');self.assertNotContains(response,'Сохранить назначение')
-        self.assertContains(self.client.post(reverse('personnel:plan_assignment_edit',args=[self.row.pk]),{**self.data,'version':self.row.updated_at.isoformat()}),'Назначение удалено')
+        self.assertContains(response,'Удалённая привязка');self.assertNotContains(response,'Сохранить привязку')
+        self.assertContains(self.client.post(reverse('personnel:plan_assignment_edit',args=[self.row.pk]),{**self.data,'version':self.row.updated_at.isoformat()}),'Привязка удалена')
         other=Brigade.objects.create(company=self.company,name='Мастер')
         response=self.client.post(reverse('personnel:plan_assignment_change',args=[self.row.pk]),{**self.data,'planning_position':other.pk,'version':self.row.updated_at.isoformat()})
-        self.assertContains(response,'Назначение удалено')
+        self.assertContains(response,'Привязка удалена')
         self.assertFalse(StaffingSlot.objects.filter(previous_assignment=self.row).exists())
         form=PersonScheduleForm(person=Person.objects.get(pk=self.row.person_id))
         self.assertFalse(form.fields['slot'].queryset.filter(pk=self.row.pk).exists())

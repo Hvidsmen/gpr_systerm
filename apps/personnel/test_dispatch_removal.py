@@ -39,5 +39,5 @@ class DispatchRemovalTests(TestCase):
         self.person.refresh_from_db();self.assertIsNone(self.person.dispatcher_removed_at)
         StaffingSlot.objects.filter(pk=self.slot.pk).update(planning_position=self.position.planning_mapping.brigade)
         response=self.client.post(self.url,{'reason':'Не нужен'})
-        self.assertContains(response,'Сначала удалите действующее назначение')
+        self.assertContains(response,'Сначала удалите действующую привязку')
         self.person.refresh_from_db();self.assertIsNone(self.person.dispatcher_removed_at)
