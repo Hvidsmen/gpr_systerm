@@ -319,8 +319,7 @@ class MovementReviewRequest(PersonnelModel):
         ('RETURNED','На доработке'),('TICKETS','Покупка билетов'),
         ('HUB_ARRIVAL','Прибытие в ОП Дудинка'),
         ('HUB_PROCESSING','Оформление в ОП Дудинка'),('HUB_READY','Документы готовы'),
-        ('EN_ROUTE','В пути'),('COMPLETED','Маршрут завершён'),
-        ('ACCEPTED','Принято'),('CANCELLED','Отменено'),
+        ('EN_ROUTE','В пути'),('COMPLETED','Маршрут завершён'),('CANCELLED','Отменено'),
     ]
     event=models.OneToOneField(HousingEvent,on_delete=models.PROTECT,related_name='review_request',null=True,blank=True)
     person=models.ForeignKey(Person,on_delete=models.PROTECT,related_name='movement_review_requests')
@@ -444,7 +443,7 @@ class MovementReviewRequest(PersonnelModel):
             return 'HUB_PROCESSING' if needs_zup or not self.clearance_ready else 'HUB_READY'
         if self.status=='EN_ROUTE':return 'EN_ROUTE'
         if self.status=='COMPLETED':return 'COMPLETED'
-        if self.status=='ACCEPTED':return 'ACCEPTED'
+        if self.status=='ACCEPTED':return 'COMPLETED'
         if self.status=='CANCELLED':return 'CANCELLED'
         return 'REVIEW'
     def route_label(self):

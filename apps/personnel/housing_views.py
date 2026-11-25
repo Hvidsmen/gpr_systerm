@@ -518,8 +518,8 @@ def review_request_context(request):
         'HUB_ARRIVAL':Q(status='PEREVAKHTA')&~Q(kind='ARRIVAL',tickets_ready=False),
         'HUB_PROCESSING':Q(status='AT_HUB')&(Q(clearance_ready=False)|hub_zup),
         'HUB_READY':Q(status='AT_HUB',clearance_ready=True)&~hub_zup,
-        'EN_ROUTE':Q(status='EN_ROUTE'),'COMPLETED':Q(status='COMPLETED'),
-        'ACCEPTED':Q(status='ACCEPTED'),'CANCELLED':Q(status='CANCELLED'),
+        'EN_ROUTE':Q(status='EN_ROUTE'),'COMPLETED':Q(status__in=['COMPLETED','ACCEPTED']),
+        'CANCELLED':Q(status='CANCELLED'),
     }
     approval_stages={'APPROVAL_FIRST','APPROVAL_PEREVAKHTA','APPROVAL_PARALLEL'}
     status_scope=qs
