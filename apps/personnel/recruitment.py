@@ -251,6 +251,48 @@ def pool_candidate_delete_blockers(candidate):
 
 
 @transaction.atomic
+def restart_dismissed_candidate(user,candidate_id):
+    """Start a fresh recruitment cycle while retaining the previous employment history."""
+    candidate=TalentPoolCandidate.objects.select_for_update().select_related('employed_employee').get(
+        company=user.company,pk=candidate_id)
+    if candidate.stage!='DISMISSED':
+        raise ValidationError('Повторный приём можно начать только для кандидата на этапе «Уволен».')
+    active_movements=candidate.movement_requests.exclude(status__in={'COMPLETED','ACCEPTED','CANCELLED'}).count()
+    if active_movements:
+        raise ValidationError(f'Сначала завершите действующие задания перевахты: {active_movements}.')
+    now=timezone.now();source=dict(candidate.source_data or {})
+    cycles=list(source.get('recruitment_cycles') or [])
+    cycle_number=int(source.get('current_recruitment_cycle') or len(cycles)+1)
+    employee=candidate.employed_employee
+    confirmations={flag:{'confirmed':getattr(candidate,flag),'date':(
+        getattr(candidate,date_field).isoformat() if getattr(candidate,date_field) else '')}
+        for flag,date_field in TalentPoolFormConfirmationPairs}
+    cycles.append({'number':cycle_number,
+        'started_at':source.get('current_cycle_started_at') or candidate.created_at.isoformat(),
+        'ended_at':now.isoformat(),'final_stage':candidate.stage,'final_stage_label':candidate.get_stage_display(),
+        'employee':({'id':employee.pk,'name':employee.display_name,'employee_number':employee.employee_number,
+            'employed_at':candidate.employed_at.isoformat() if candidate.employed_at else ''} if employee else {}),
+        'application_ids':list(candidate.vacancy_candidates.values_list('pk',flat=True)),
+        'confirmations':confirmations})
+    source['recruitment_cycles']=cycles
+    source['current_recruitment_cycle']=cycle_number+1
+    source['current_cycle_started_at']=now.isoformat();source['funnel_stage']='NEW'
+    source.pop('employment_review',None);source.pop('employment_match',None)
+    for key in ('readiness','manager_approval','security_approval','medical_exam','pass_documents','pass_submitted','pass_received'):
+        source[key]=''
+    candidate.source_data=source;candidate.stage='NEW';candidate.stage_started_at=now;candidate.is_active=True
+    candidate.archived_at=None;candidate.archived_by=None;candidate.employed_employee=None;candidate.employed_at=None
+    update_fields=['source_data','stage','stage_started_at','is_active','archived_at','archived_by',
+        'employed_employee','employed_at','updated_at']
+    for flag,date_field in TalentPoolFormConfirmationPairs:
+        setattr(candidate,flag,False);setattr(candidate,date_field,None);update_fields.extend((flag,date_field))
+    candidate.save(update_fields=update_fields)
+    TalentPoolStageEvent.objects.create(company=user.company,candidate=candidate,from_stage='DISMISSED',to_stage='NEW',actor=user,
+        note=f'Повторный приём: начат цикл №{cycle_number+1}. История цикла №{cycle_number} сохранена.')
+    return candidate
+
+
+@transaction.atomic
 def merge_pool_candidates(user,source_id,target_id):
     """Merge a confirmed duplicate into the selected durable card without losing links."""
     if source_id==target_id:raise ValidationError('Выберите другую основную карточку.')

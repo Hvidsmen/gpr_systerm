@@ -400,6 +400,7 @@ def candidate_card(request,pk):
     documents=list(row.documents.all())
     return render(request,'personnel/recruitment_candidate_card.html',{**context(request.user),'row':row,'events':events,
         'source_events':source_events,'source_applications':source_applications,'stage_events':stage_events,
+        'recruitment_cycles':(row.source_data or {}).get('recruitment_cycles',[]),
         'base_documents':[doc for doc in documents if doc.kind=='BASE'],
         'manager_documents':[doc for doc in documents if doc.kind=='MANAGER'],
         'security_documents':[doc for doc in documents if doc.kind=='SECURITY'],
@@ -468,6 +469,18 @@ def candidate_employment_link(request,pk):
     else:messages.success(request,f'{row.full_name} связан с сотрудником ЗУП {employee.display_name}.')
     if request.POST.get('return_to')=='card':return redirect('personnel:recruitment_candidate_card',pk=pk)
     return redirect(f"{reverse('personnel:recruitment_list')}?candidate_stage=employed")
+
+
+@login_required
+@require_POST
+def candidate_restart(request,pk):
+    require_roles(request.user,service.RECRUIT)
+    try:row=service.restart_dismissed_candidate(request.user,pk)
+    except TalentPoolCandidate.DoesNotExist:raise Http404
+    except ValidationError as exc:messages.error(request,'; '.join(exc.messages))
+    else:messages.success(request,f'{row.full_name}: начат новый цикл повторного приёма. Предыдущая история сохранена.')
+    if request.POST.get('return_to')=='card':return redirect('personnel:recruitment_candidate_card',pk=pk)
+    return redirect('personnel:recruitment_list')
 
 
 @login_required

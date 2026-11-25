@@ -1014,6 +1014,50 @@ class RecruitmentTests(TestCase):
         self.client.force_login(self.dispatch)
         self.assertEqual(self.client.post(reverse('personnel:recruitment_candidate_delete',args=[linked.pk])).status_code,403)
 
+    def test_dismissed_candidate_can_start_new_recruitment_cycle_with_history(self):
+        request_row=self.row()
+        dismissed=TalentPoolCandidate.objects.create(company=self.company,full_name='Кандидат на повторный приём',
+            phone='89991234567',position=self.position,construction_object=self.obj,stage='DISMISSED',is_active=False,
+            employed_employee=self.employee,employed_at=timezone.now()-timedelta(days=30),
+            ready_for_arrival=True,ready_for_arrival_on=self.day,
+            manager_approved=True,manager_approved_on=self.day,
+            security_approved=True,security_approved_on=self.day,
+            source_data={'current_recruitment_cycle':1,'current_cycle_started_at':'2026-01-10T09:00:00+03:00',
+                'employment_match':{'employee_id':self.employee.pk},'manager_approval':self.day.isoformat()},
+            created_by=self.recruiter)
+        application=RecruitmentCandidate.objects.create(company=self.company,request=request_row,pool_candidate=dismissed,
+            full_name=dismissed.full_name,phone=dismissed.phone,status='EMPLOYED',created_by=self.recruiter)
+        old_event=TalentPoolStageEvent.objects.create(company=self.company,candidate=dismissed,from_stage='EMPLOYED',
+            to_stage='DISMISSED',actor=self.admin,note='Уволен по данным ЗУП')
+        self.client.force_login(self.recruiter)
+        card_url=reverse('personnel:recruitment_candidate_card',args=[dismissed.pk])
+        restart_url=reverse('personnel:recruitment_candidate_restart',args=[dismissed.pk])
+        card=self.client.get(card_url)
+        self.assertContains(card,restart_url);self.assertContains(card,'Повторный приём — вернуть в работу')
+        restarted=self.client.post(restart_url,{'return_to':'card'})
+        self.assertRedirects(restarted,card_url,fetch_redirect_response=False)
+        dismissed.refresh_from_db();application.refresh_from_db()
+        self.assertEqual(dismissed.stage,'NEW');self.assertTrue(dismissed.is_active)
+        self.assertIsNone(dismissed.employed_employee_id);self.assertIsNone(dismissed.employed_at)
+        self.assertFalse(dismissed.ready_for_arrival);self.assertIsNone(dismissed.ready_for_arrival_on)
+        self.assertFalse(dismissed.manager_approved);self.assertIsNone(dismissed.manager_approved_on)
+        self.assertFalse(dismissed.security_approved);self.assertIsNone(dismissed.security_approved_on)
+        self.assertEqual(application.pool_candidate,dismissed)
+        self.assertTrue(TalentPoolStageEvent.objects.filter(pk=old_event.pk,candidate=dismissed).exists())
+        cycles=dismissed.source_data['recruitment_cycles'];self.assertEqual(len(cycles),1)
+        self.assertEqual(cycles[0]['number'],1);self.assertEqual(cycles[0]['final_stage'],'DISMISSED')
+        self.assertEqual(cycles[0]['employee']['employee_number'],'R-001')
+        self.assertEqual(cycles[0]['application_ids'],[application.pk])
+        self.assertEqual(dismissed.source_data['current_recruitment_cycle'],2)
+        self.assertTrue(dismissed.stage_events.filter(from_stage='DISMISSED',to_stage='NEW',
+            note__contains='начат цикл №2').exists())
+        history=self.client.get(card_url)
+        self.assertContains(history,'История приёмов');self.assertContains(history,'таб. № R-001')
+        advanced=self.client.post(reverse('personnel:recruitment_candidate_stage',args=[dismissed.pk]),{
+            'stage':'SCREENING','note':'Новый цикл'})
+        self.assertEqual(advanced.status_code,200)
+        dismissed.refresh_from_db();self.assertEqual(dismissed.stage,'SCREENING')
+
     def test_ready_for_arrival_tab_contains_only_transferred_candidates(self):
         from .models import TalentPoolCandidate
         ready=TalentPoolCandidate.objects.create(company=self.company,full_name='Поставленный на заезд',stage='TRANSFERRED',
