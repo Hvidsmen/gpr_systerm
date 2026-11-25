@@ -993,6 +993,27 @@ class RecruitmentTests(TestCase):
         self.assertEqual(self.client.post(bulk_url,{'action':'archive','selected':[foreign.pk]}).status_code,403)
         self.assertTrue(TalentPoolCandidate.objects.filter(pk=foreign.pk).exists())
 
+    def test_recruiter_can_delete_free_candidate_but_linked_card_is_preserved(self):
+        from .models import TalentPoolCandidate
+        free=TalentPoolCandidate.objects.create(company=self.company,full_name='Свободный кандидат',
+            position=self.position,construction_object=self.obj,created_by=self.recruiter)
+        linked=self.candidate().pool_candidate
+        foreign=TalentPoolCandidate.objects.create(company=self.other,full_name='Чужой кандидат',created_by=self.foreign)
+        self.client.force_login(self.recruiter)
+        free_url=reverse('personnel:recruitment_candidate_delete',args=[free.pk])
+        card=self.client.get(reverse('personnel:recruitment_candidate_card',args=[free.pk]))
+        self.assertContains(card,free_url);self.assertContains(card,'Удалить кандидата')
+        deleted=self.client.post(free_url,{'return_to':'card'})
+        self.assertRedirects(deleted,reverse('personnel:recruitment_list'),fetch_redirect_response=False)
+        self.assertFalse(TalentPoolCandidate.objects.filter(pk=free.pk).exists())
+        blocked=self.client.post(reverse('personnel:recruitment_candidate_delete',args=[linked.pk]),
+            {'return_to':'card'},follow=True)
+        self.assertTrue(TalentPoolCandidate.objects.filter(pk=linked.pk).exists())
+        self.assertContains(blocked,'заявки на подбор: 1');self.assertContains(blocked,'Используйте архив')
+        self.assertEqual(self.client.post(reverse('personnel:recruitment_candidate_delete',args=[foreign.pk])).status_code,404)
+        self.client.force_login(self.dispatch)
+        self.assertEqual(self.client.post(reverse('personnel:recruitment_candidate_delete',args=[linked.pk])).status_code,403)
+
     def test_ready_for_arrival_tab_contains_only_transferred_candidates(self):
         from .models import TalentPoolCandidate
         ready=TalentPoolCandidate.objects.create(company=self.company,full_name='Поставленный на заезд',stage='TRANSFERRED',

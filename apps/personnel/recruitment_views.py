@@ -568,6 +568,23 @@ def candidate_merge(request,pk):
 
 
 @login_required
+@require_POST
+def candidate_delete(request,pk):
+    require_roles(request.user,service.RECRUIT)
+    with transaction.atomic():
+        row=get_object_or_404(TalentPoolCandidate.objects.select_for_update(),company=request.user.company,pk=pk)
+        full_name=row.full_name
+        blockers=service.pool_candidate_delete_blockers(row)
+        if blockers:
+            messages.warning(request,f'Карточка «{full_name}» не удалена: '+', '.join(blockers)+'. Используйте архив или объедините дубли.')
+        else:
+            row.delete();messages.success(request,f'Кандидат «{full_name}» удалён.')
+    if blockers and request.POST.get('return_to')=='card':
+        return redirect('personnel:recruitment_candidate_card',pk=pk)
+    return redirect('personnel:recruitment_list')
+
+
+@login_required
 @require_http_methods(['GET','POST'])
 def pool_import(request):
     require_roles(request.user,service.RECRUIT)

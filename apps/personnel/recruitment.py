@@ -237,6 +237,19 @@ def duplicate_candidate_map(company):
     return result
 
 
+def pool_candidate_delete_blockers(candidate):
+    """Explain why a durable candidate card must be retained instead of deleted."""
+    blockers=[]
+    application_count=candidate.vacancy_candidates.count()
+    movement_count=candidate.movement_requests.count()
+    document_count=candidate.documents.count()
+    if application_count:blockers.append(f'заявки на подбор: {application_count}')
+    if movement_count:blockers.append(f'задания перевахты: {movement_count}')
+    if document_count:blockers.append(f'документы: {document_count}')
+    if candidate.employed_employee_id:blockers.append('привязка к сотруднику ЗУП')
+    return blockers
+
+
 @transaction.atomic
 def merge_pool_candidates(user,source_id,target_id):
     """Merge a confirmed duplicate into the selected durable card without losing links."""
