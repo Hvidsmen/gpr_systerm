@@ -317,8 +317,8 @@ class MovementReviewRequest(PersonnelModel):
         ('APPROVAL_PEREVAKHTA','Согласование перевахтой'),
         ('APPROVAL_PARALLEL','Параллельное согласование'),
         ('RETURNED','На доработке'),('TICKETS','Покупка билетов'),
-        ('HUB_ARRIVAL','Прибытие в ОП Дудинка'),('HUB_ZUP','Оформление в ЗУП'),
-        ('HUB_CLEARANCE','Обходной лист'),('HUB_READY','Документы готовы'),
+        ('HUB_ARRIVAL','Прибытие в ОП Дудинка'),
+        ('HUB_PROCESSING','Оформление в ОП Дудинка'),('HUB_READY','Документы готовы'),
         ('EN_ROUTE','В пути'),('COMPLETED','Маршрут завершён'),
         ('ACCEPTED','Принято'),('CANCELLED','Отменено'),
     ]
@@ -440,8 +440,8 @@ class MovementReviewRequest(PersonnelModel):
         if self.status=='PEREVAKHTA':
             return 'TICKETS' if self.kind=='ARRIVAL' and not self.tickets_ready else 'HUB_ARRIVAL'
         if self.status=='AT_HUB':
-            if self.kind=='ARRIVAL' and self.employment_kind=='NEW' and not self.person.employee_id:return 'HUB_ZUP'
-            return 'HUB_CLEARANCE' if not self.clearance_ready else 'HUB_READY'
+            needs_zup=self.kind=='ARRIVAL' and self.employment_kind=='NEW' and not self.person.employee_id
+            return 'HUB_PROCESSING' if needs_zup or not self.clearance_ready else 'HUB_READY'
         if self.status=='EN_ROUTE':return 'EN_ROUTE'
         if self.status=='COMPLETED':return 'COMPLETED'
         if self.status=='ACCEPTED':return 'ACCEPTED'

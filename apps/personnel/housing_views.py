@@ -509,15 +509,14 @@ def review_request_context(request):
     if source:qs=qs.filter(source=source)
     # Lifecycle cards split the broad database statuses into the actual steps
     # visible to users.  Keep persisted status parameters working for old links.
-    hub_zup=Q(status='AT_HUB',kind='ARRIVAL',employment_kind='NEW',person__employee__isnull=True)
+    hub_zup=Q(kind='ARRIVAL',employment_kind='NEW',person__employee__isnull=True)
     lifecycle_queries={
         'DRAFT':Q(status='OPEN',source='DISPATCHER',approved_at__isnull=True),
         'REVIEW':Q(status='OPEN')&(~Q(source='DISPATCHER')|Q(approved_at__isnull=False)),
         'RETURNED':Q(status='RETURNED'),
         'TICKETS':Q(status='PEREVAKHTA',kind='ARRIVAL',tickets_ready=False),
         'HUB_ARRIVAL':Q(status='PEREVAKHTA')&~Q(kind='ARRIVAL',tickets_ready=False),
-        'HUB_ZUP':hub_zup,
-        'HUB_CLEARANCE':Q(status='AT_HUB',clearance_ready=False)&~hub_zup,
+        'HUB_PROCESSING':Q(status='AT_HUB')&(Q(clearance_ready=False)|hub_zup),
         'HUB_READY':Q(status='AT_HUB',clearance_ready=True)&~hub_zup,
         'EN_ROUTE':Q(status='EN_ROUTE'),'COMPLETED':Q(status='COMPLETED'),
         'ACCEPTED':Q(status='ACCEPTED'),'CANCELLED':Q(status='CANCELLED'),

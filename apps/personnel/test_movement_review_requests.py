@@ -772,6 +772,10 @@ class MovementReviewRequestTests(TestCase):
             to_camp=self.camp,requested_by=self.personnel,status='PENDING_APPROVAL',approval_route=parallel_route)
         tickets=MovementReviewRequest.objects.create(company=self.company,person=self.person,kind='ARRIVAL',movement_date=day,
             to_camp=self.camp,requested_by=self.personnel,status='PEREVAKHTA',tickets_ready=False)
+        hub_processing=MovementReviewRequest.objects.create(company=self.company,person=self.person,kind='ARRIVAL',movement_date=day,
+            to_camp=self.camp,requested_by=self.personnel,status='AT_HUB',clearance_ready=False)
+        hub_ready=MovementReviewRequest.objects.create(company=self.company,person=self.person,kind='ARRIVAL',movement_date=day,
+            to_camp=self.camp,requested_by=self.personnel,status='AT_HUB',clearance_ready=True)
         self.client.force_login(self.reviewer);url=reverse('personnel:movement_reviews')
         page=self.client.get(url)
         cards={card['code']:card for card in page.context['review_status_cards']}
@@ -779,10 +783,13 @@ class MovementReviewRequestTests(TestCase):
         self.assertEqual(cards['APPROVAL_PEREVAKHTA']['count'],1)
         self.assertEqual(cards['APPROVAL_PARALLEL']['count'],1)
         self.assertEqual(cards['TICKETS']['count'],1)
+        self.assertEqual(cards['HUB_PROCESSING']['count'],1);self.assertEqual(cards['HUB_READY']['count'],1)
         self.assertContains(page,'Этап жизни заявки');self.assertContains(page,'Параллельное согласование');self.assertContains(page,'Покупка билетов')
+        self.assertContains(page,'Оформление в ОП Дудинка');self.assertNotContains(page,'Оформление в ЗУП</span>');self.assertNotContains(page,'Обходной лист</span>')
         filtered=self.client.get(url,{'status':'APPROVAL_PEREVAKHTA'})
         self.assertEqual([row.pk for row in filtered.context['dispatcher_review_requests']],[specialist.pk])
         self.assertNotIn(first,filtered.context['dispatcher_review_requests']);self.assertNotIn(parallel,filtered.context['dispatcher_review_requests']);self.assertNotIn(tickets,filtered.context['dispatcher_review_requests'])
+        self.assertNotIn(hub_processing,filtered.context['dispatcher_review_requests']);self.assertNotIn(hub_ready,filtered.context['dispatcher_review_requests'])
 
     def test_position_summary_combines_rest_arrivals_departures_and_exports_excel(self):
         day=timezone.localdate();position=self.employee.display_position
