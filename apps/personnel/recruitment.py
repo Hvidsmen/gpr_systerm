@@ -14,6 +14,7 @@ from .recruitment_models import POOL_UNAVAILABLE_STAGES,RECRUITMENT_SYSTEM_STAGE
 DISPATCH = {'ADMIN','HR_HEAD','PERSONNEL_DISPATCHER','PEREVAKHTA_SPECIALIST'}
 RECRUIT = {'ADMIN','HR_HEAD','RECRUITMENT_HEAD','RECRUITER','PEREVAKHTA_SPECIALIST'}
 ASSIGN = {'ADMIN','HR_HEAD','RECRUITMENT_HEAD','PEREVAKHTA_SPECIALIST'}
+RECRUITER_USER_ROLES = {'RECRUITER','RECRUITMENT_HEAD'}
 ARRIVAL_PROCESSORS = DISPATCH | {'PEREVAKHTA_SPECIALIST'}
 READ = DISPATCH | RECRUIT | {'PEREVAKHTA_SPECIALIST'}
 EDITABLE_CANDIDATE_STAGES={value for value,_ in RecruitmentCandidate.STATES}-RECRUITMENT_SYSTEM_STAGES
@@ -124,8 +125,8 @@ def assign_request(user,pk,recruiter,revision):
     if row.closed_at:raise ValidationError('Подбор по заявке уже закрыт.')
     from core.permissions import role_code
     if (not recruiter or recruiter.company_id!=user.company_id or not recruiter.is_active or recruiter.archived_at or
-            role_code(recruiter)!='RECRUITER'):
-        raise ValidationError('Выберите действующего пользователя с ролью «Рекрутер».')
+            role_code(recruiter) not in RECRUITER_USER_ROLES):
+        raise ValidationError('Выберите действующего рекрутера или руководителя банка сотрудников.')
     previous=row.assigned_to
     row.assigned_to=recruiter;row.save(update_fields=['assigned_to','updated_at']);touch(row)
     description=f'Назначен ответственный рекрутер: {recruiter.get_full_name() or recruiter.username}.'

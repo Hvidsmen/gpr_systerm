@@ -8,7 +8,7 @@ from apps.accounts.models import User
 from .models import BaseCity,RecruitmentRequest, RecruitmentCandidate,RecruitmentSpecialist,TalentPoolCandidate,Camp
 from .recruitment_models import (RECRUITMENT_STAGES,POOL_UNAVAILABLE_STAGES,RECRUITMENT_SYSTEM_STAGES,
     RECRUITMENT_TERMINAL_STAGES,RECRUITMENT_APPROVAL_FLOW)
-from .recruitment import allowed_camps, validate_documents
+from .recruitment import RECRUITER_USER_ROLES, allowed_camps, validate_documents
 from .recruitment_stage_flow import MANUAL_EXIT_STAGES,STEP_CONFIRMATIONS,allowed_manual_stage
 from .employee_widgets import RemoteEmployeeSelect
 from . import base_cities
@@ -30,7 +30,8 @@ class RecruiterAssignmentForm(RevisionForm):
     recruiter=forms.ModelChoiceField(label='Ответственный рекрутер',queryset=User.objects.none(),empty_label='Выберите рекрутера',widget=forms.Select(attrs={'class':'form-select'}))
     def __init__(self,*args,company,current=None,**kwargs):
         super().__init__(*args,**kwargs)
-        rows=User.objects.filter(company=company,is_active=True,archived_at__isnull=True,role__code='RECRUITER')
+        rows=User.objects.filter(company=company,is_active=True,archived_at__isnull=True,
+            role__code__in=RECRUITER_USER_ROLES)
         self.fields['recruiter'].queryset=rows.order_by('last_name','first_name','username','pk')
         if current and rows.filter(pk=current.pk).exists():self.initial['recruiter']=current.pk
 
@@ -41,13 +42,14 @@ class RecruitmentSpecialistForm(forms.ModelForm):
         fields=['name','user','is_active']
     def __init__(self,*args,company,**kwargs):
         super().__init__(*args,**kwargs);self.instance.company=company
-        users=User.objects.filter(company=company,is_active=True,archived_at__isnull=True,role__code='RECRUITER')
+        users=User.objects.filter(company=company,is_active=True,archived_at__isnull=True,
+            role__code__in=RECRUITER_USER_ROLES)
         if self.instance.user_id:
             users=User.objects.filter(company=company).filter(Q(pk=self.instance.user_id)|Q(
-                is_active=True,archived_at__isnull=True,role__code='RECRUITER'))
+                is_active=True,archived_at__isnull=True,role__code__in=RECRUITER_USER_ROLES))
         self.fields['user'].queryset=users.select_related('role').order_by('last_name','first_name','username','pk')
         self.fields['user'].empty_label='Не связан с пользователем'
-        self.fields['user'].help_text='Необязательно. Свяжите запись с учётной записью, имеющей роль «Рекрутер».'
+        self.fields['user'].help_text='Необязательно. Свяжите запись с рекрутером или руководителем банка сотрудников.'
         self.fields['is_active'].help_text='Неактивный рекрутер остаётся в истории, но не предлагается в новых карточках кандидатов.'
         self.fields['user'].label_from_instance=lambda user:user.get_full_name() or user.username
     def clean_name(self):
