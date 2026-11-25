@@ -80,7 +80,7 @@ class RotationTests(TestCase):
         from openpyxl import load_workbook
         from io import BytesIO
         exported=self.client.get(reverse('personnel:housing_export'),data)
-        self.assertEqual(load_workbook(BytesIO(exported.content),read_only=True).active.max_row,1)
+        self.assertEqual(load_workbook(BytesIO(exported.content),read_only=True)['Данные'].max_row,1)
 
     def test_page_defaults_to_one_object_and_all_its_camps(self):
         page=self.client.get(reverse('personnel:housing'))
@@ -192,7 +192,7 @@ class RotationTests(TestCase):
         from openpyxl import load_workbook
         from io import BytesIO
         exported=self.client.get(reverse('personnel:housing_export'),data)
-        self.assertEqual(load_workbook(BytesIO(exported.content)).active.max_row,1)
+        self.assertEqual(load_workbook(BytesIO(exported.content))['Данные'].max_row,1)
 
 
     def test_group_view_preserves_people_vacancies_scope_and_plan_order(self):
@@ -218,6 +218,12 @@ class RotationTests(TestCase):
         self.assertContains(grouped,'data-housing-person=',count=2)
         self.assertContains(grouped,'data-housing-vacancy=',count=1)
         self.assertTrue(all('camp='+str(self.a.pk) in view['url'] for view in grouped.context['roster_view_links']))
+        from io import BytesIO
+        from openpyxl import load_workbook
+        exported=self.client.get(reverse('personnel:housing_export'),{**data,'roster_view':'groups'})
+        values=[cell.value for row in load_workbook(BytesIO(exported.content)).active.iter_rows() for cell in row if cell.value]
+        self.assertIn('Группа должностей · ИТР Состав',values)
+        self.assertIn('Группа должностей · Основной рабочий состав',values)
         filtered=self.client.get(reverse('personnel:housing'),{**data,'roster_view':'groups','state':'MO'})
         self.assertEqual([g['name'] for g in filtered.context['roster_sections']],['ИТР Состав'])
         self.assertEqual(filtered.context['rotation_stats']['people'],1)

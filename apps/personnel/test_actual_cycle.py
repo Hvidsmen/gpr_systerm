@@ -171,7 +171,7 @@ class ActualCycleTests(TestCase):
         from io import BytesIO
         import openpyxl
         response=self.client.get(reverse('personnel:housing_export'),{'camp':self.a.pk,'date':str(self.day)})
-        sheet=openpyxl.load_workbook(BytesIO(response.content)).active;headers=[c.value for c in sheet[1]]
+        sheet=openpyxl.load_workbook(BytesIO(response.content))['Данные'];headers=[c.value for c in sheet[1]]
         self.assertEqual(sheet.cell(2,headers.index('Дней на вахте / МО')+1).value,(timezone.localdate()-self.stay.arrived_on).days+1)
         self.assertEqual(sheet.cell(2,headers.index('График')+1).value,str(self.pattern))
         housing.move(self.hr,'DEPARTURE',self.a,self.day,[self.person])

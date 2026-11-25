@@ -44,7 +44,7 @@ class CurrentPersonnelDayTests(TestCase):
     def test_export_uses_today_even_from_a_legacy_link(self):
         response=self.client.get(reverse('personnel:housing_export'),{'camp':self.a.pk,'date':str(self.day)})
         self.assertEqual(response.status_code,200)
-        sheet=openpyxl.load_workbook(BytesIO(response.content)).active
+        sheet=openpyxl.load_workbook(BytesIO(response.content))['Данные']
         headings=[cell.value for cell in sheet[1]]
         date_column=headings.index('Дата')+1
         self.assertTrue(all(sheet.cell(row,date_column).value==str(self.today) for row in range(2,sheet.max_row+1)))

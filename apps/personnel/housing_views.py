@@ -1085,17 +1085,36 @@ def workbook_response(filename,title,rows):
 
 @login_required
 def roster_export(request):
-    from .rotation import RotationFilter,normalize_rotation_filter_data,rotation_rows
+    from .rotation import RotationFilter,filter_position,filter_rotation_rows,normalize_rotation_filter_data,rotation_rows,rotation_stats,status_indicator
     raw=request.GET.copy();raw['date']=str(timezone.localdate());raw=normalize_rotation_filter_data(raw,request.user.company)
     selector=RotationFilter(raw,company=request.user.company)
     if not selector.is_valid():raise Http404('Некорректные фильтры перевахты.')
-    camps=selector.selected_camps(request.user.company);data=selector.cleaned_data;day=data['date']
-    rows,days,_=rotation_rows(request.user.company,list(camps),day,construction_object=data.get('construction_object'),query=data.get('q',''),position=data.get('position'),state=data.get('state',''),include_unassigned=not data.get('construction_object') and not data.get('camps'))
-    values=[['Местонахождение','Дата','Сотрудник / вакансия','Табельный номер','Должность','Вахта / отдых','Заезд','Выезд','Выезд по графику','Возвращение по графику','Дней на вахте / МО','Начало текущей вахты / МО','Источник начала периода','График',*[d.strftime('%d.%m.%Y') for d in days]]]
-    for row in rows:
-        person=row['person'];fmt=lambda value:value.isoformat() if value else ''
-        values.append([str(row['camp'] or ''),str(day),person.display_name if person else 'Вакансия',person.display_employee_number if person else '',row['position_label'],row['state_label'],fmt(row.get('arrived_on')),fmt(row.get('last_departure')),fmt(row.get('planned_departure_display')),fmt(row.get('planned_return')),row.get('state_days'),fmt(row.get('state_since')),row.get('state_days_source',''),row.get('schedule_label',''),*row['codes']])
-    return workbook_response('rotation.xlsx','Перевахта',values)
+    camps=list(selector.selected_camps(request.user.company));data=selector.cleaned_data;day=data['date']
+    base_rows,days,_=rotation_rows(request.user.company,camps,day,construction_object=data.get('construction_object'),include_unassigned=not data.get('construction_object') and not data.get('camps'))
+    rows=filter_position(filter_rotation_rows(base_rows,query=data.get('q',''),state=data.get('state','')),data.get('position'))
+    stats=rotation_stats(rows)
+    if data.get('state'):
+        summary_rows=filter_position(filter_rotation_rows(base_rows,query=data.get('q','')),data.get('position'))
+        summary_stats=rotation_stats(summary_rows)
+    else:summary_rows=rows;summary_stats=stats.copy()
+    departing=filter_position(filter_rotation_rows(base_rows,query=data.get('q',''),state='DEPARTING'),data.get('position'))
+    summary_stats['departing']=len(departing)
+    for row in rows:row['status_tone'],row['status_caption'],row['status_help']=status_indicator(row)
+    from .housing_plan import monthly_plan,position_headers,summary_metrics
+    plan_context=monthly_plan(request.user,camps[0],day,camps=camps,construction_object=data.get('construction_object'))
+    groups=position_headers(request.user.company,rows,plan_context,query=data.get('q',''),position=data.get('position'),state=data.get('state',''))
+    summary_groups=groups if not data.get('state') else position_headers(request.user.company,summary_rows,plan_context,query=data.get('q',''),position=data.get('position'))
+    normalized=lambda value:' '.join(str(value).split()).casefold()
+    summaries={normalized(group['name']):group['summary'] for group in summary_groups}
+    for group in groups:group['summary']=summaries.get(normalized(group['name']),group['summary'])
+    summary=summary_metrics(summary_stats,summary_groups,plan_context['housing_plan_months'])
+    state_labels=dict(selector.fields['state'].choices)
+    filters={**data,'state_label':state_labels.get(data.get('state',''),''),'roster_view':'groups' if raw.get('roster_view')=='groups' else 'positions'}
+    from .rotation_export import build_rotation_workbook
+    content=build_rotation_workbook(day=day,rows=rows,days=days,groups=groups,summary=summary,summary_stats=summary_stats,selected_camps=camps,filters=filters)
+    response=HttpResponse(content,content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    response['Content-Disposition']=f'attachment; filename="personnel_dispatcher_{day:%Y-%m-%d}.xlsx"'
+    return response
 
 
 
