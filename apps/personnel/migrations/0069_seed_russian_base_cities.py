@@ -57,7 +57,9 @@ def seed_cities(apps, schema_editor):
         normalize_existing_prefixes(apps, company_id)
         existing = {normalized_key(name) for name in BaseCity.objects.filter(company_id=company_id).values_list('name', flat=True)}
         missing = [BaseCity(company_id=company_id, name=name) for name in RUSSIAN_CITIES if normalized_key(name) not in existing]
-        BaseCity.objects.bulk_create(missing, batch_size=500, ignore_conflicts=True)
+        # The missing-name set is computed above.  Do not use
+        # ignore_conflicts here: Django's MSSQL backend does not support it.
+        BaseCity.objects.bulk_create(missing, batch_size=500)
 
 
 class Migration(migrations.Migration):
