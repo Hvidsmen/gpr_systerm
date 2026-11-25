@@ -78,6 +78,19 @@ class EmployeesImportTests(TestCase):
         self.assertEqual(other.last_name, 'Иванов')
         self.assertEqual(Employee.objects.filter(company=self.company).count(), 2)
 
+    def test_scheduled_import_records_automatic_funnel_transition_as_system(self):
+        from apps.personnel.models import TalentPoolCandidate,TalentPoolStageEvent
+        candidate=TalentPoolCandidate.objects.create(company=self.company,full_name='Иванов Иван Иванович',
+            stage='SELECTED',created_by=self.admin)
+        run=self.run_record()
+        self.assertIsNone(run.created_by)
+        result=apply_employees(run,{'employees':[self.row()]})
+        candidate.refresh_from_db()
+        self.assertEqual(result['talent_pool_employed'],{'linked':1,'ambiguous':0})
+        self.assertEqual(candidate.stage,'EMPLOYED')
+        event=TalentPoolStageEvent.objects.get(candidate=candidate,to_stage='EMPLOYED')
+        self.assertIsNone(event.actor)
+
     def test_phone_is_imported_but_empty_zup_value_does_not_erase_manual_phone(self):
         run=self.run_record();apply_employees(run,{'employees':[self.row(phone='+7 900 111-22-33')]})
         employee=Employee.objects.get(company=self.company,zup_ref='1'*32);self.assertEqual(employee.phone,'+7 900 111-22-33')

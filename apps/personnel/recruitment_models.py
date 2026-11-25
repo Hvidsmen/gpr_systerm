@@ -187,7 +187,8 @@ class TalentPoolStageEvent(PersonnelModel):
     candidate=models.ForeignKey(TalentPoolCandidate,on_delete=models.CASCADE,related_name='stage_events')
     from_stage=models.CharField('Предыдущий этап',max_length=24,choices=RECRUITMENT_STAGES)
     to_stage=models.CharField('Новый этап',max_length=24,choices=RECRUITMENT_STAGES)
-    actor=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,related_name='talent_pool_stage_events')
+    actor=models.ForeignKey(settings.AUTH_USER_MODEL,on_delete=models.PROTECT,null=True,blank=True,
+        related_name='talent_pool_stage_events')
     note=models.TextField('Комментарий',blank=True)
     class Meta:ordering=['-created_at','-pk']
     def clean(self):
