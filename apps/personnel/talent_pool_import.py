@@ -16,7 +16,8 @@ PLAN_SHEET='План найма'
 TRANSFERRED_SHEET='Поставлены на заезд 2026'
 APPROVED_SHEET='Не заехалиНе потребовались'
 REJECTED_SHEET='Отказники'
-SOURCE_SHEETS=(STORE_SHEET,PLAN_SHEET,TRANSFERRED_SHEET,APPROVED_SHEET,REJECTED_SHEET)
+RESERVE_SHEET='КР'
+SOURCE_SHEETS=(STORE_SHEET,PLAN_SHEET,RESERVE_SHEET,TRANSFERRED_SHEET,APPROVED_SHEET,REJECTED_SHEET)
 
 HEADERS=['№ п.п.','ФИО','Должность','Строительный участок','Дата рождения','Серия номер паспорта','Номер телефона',
     'Согласован с непосредственным руководителем','Согласование СБ','СКЗИ (действует до)','Медицинский осмотр',
@@ -26,6 +27,8 @@ KEYS=['number','full_name','position','construction_site','birth_date','passport
     'skzi_until','medical_exam','pass_documents','base_city','readiness','dudinka_arrival','responsible_hr','agency','notes','duplicate_name']
 REJECTED_KEYS=['number','full_name','position','phone','manager_approval','security_approval','skzi_until','medical_exam',
     'pass_documents','pass_until','base_city','readiness','dudinka_arrival','responsible_hr','agency','notes']
+RESERVE_HEADERS=['Дата начала работы с кандидатом','ФИО','Профессия','Телефон','Примечание','Рекрутер']
+RESERVE_KEYS=['reserve_started_on','full_name','position','phone','notes','responsible_hr']
 PLAN_KEYS=['number','project','construction_site','op','block','department_1','department_2','position','vacancy_count',
     'for_summary','required','employed','remaining','full_name','phone','planned_mobilization','need_month','work_kind',
     'schedule','location','position_category','employee_category','priority','request_owner','responsible_hr','answer_sheet',
@@ -173,10 +176,24 @@ def _rejected_records(sheet):
             ('security_approval','medical_exam','pass_documents','pass_until','dudinka_arrival'))
 
 
+def _reserve_records(sheet):
+    iterator=sheet.iter_rows(values_only=True)
+    try:headers=[_name(value) for value in next(iterator)[:len(RESERVE_HEADERS)]]
+    except StopIteration:raise ValidationError(f'Лист «{RESERVE_SHEET}» пуст.')
+    if [value.casefold() for value in headers]!=[value.casefold() for value in RESERVE_HEADERS]:
+        raise ValidationError(f'Структура листа «{RESERVE_SHEET}» не совпадает с ожидаемой. Проверьте заголовки.')
+    for row_number,values in enumerate(iterator,2):
+        data={key:_text(value) for key,value in zip(RESERVE_KEYS,values[:len(RESERVE_KEYS)])}
+        data['full_name']=_name(data['full_name'])
+        if not _valid_name(data['full_name']):continue
+        yield _record(RESERVE_SHEET,row_number,data,'RESERVE',('reserve_started_on',))
+
+
 def _records(workbook):
     readers={
         STORE_SHEET:lambda sheet:_common_records(sheet,'SELECTED'),
         PLAN_SHEET:_plan_records,
+        RESERVE_SHEET:_reserve_records,
         TRANSFERRED_SHEET:lambda sheet:_common_records(sheet,'TRANSFERRED'),
         APPROVED_SHEET:lambda sheet:_common_records(sheet,'ARRIVAL_APPROVED'),
         REJECTED_SHEET:_rejected_records,
@@ -189,6 +206,14 @@ def _current_record(records):
     return max(records,key=lambda item:(item['event_date'],STAGE_ORDER.get(item['stage'],0),SOURCE_SHEETS.index(item['sheet']),item['row']))
 
 
+def _group_key(record):
+    """Keep short reserve entries with different people from collapsing by name."""
+    name=record['data']['full_name'].casefold()
+    if record['sheet']!=RESERVE_SHEET:return name
+    phone=_phone(record['phone'])
+    return f'{name}\0{phone}' if phone else f'{name}\0row:{record["row"]}'
+
+
 @transaction.atomic
 def import_sheet(user,file):
     try:
@@ -197,20 +222,29 @@ def import_sheet(user,file):
     except Exception as exc:raise ValidationError('Не удалось прочитать XLSX-файл.') from exc
     if STORE_SHEET not in workbook.sheetnames:raise ValidationError(f'В файле нет листа «{STORE_SHEET}».')
     grouped=defaultdict(list)
-    for record in _records(workbook):grouped[record['data']['full_name'].casefold()].append(record)
+    for record in _records(workbook):grouped[_group_key(record)].append(record)
     existing=defaultdict(list)
     rows=TalentPoolCandidate.objects.select_for_update().filter(company=user.company).select_related(
         'responsible_hr','position','construction_object','base_city').prefetch_related('vacancy_candidates')
     for row in rows:existing[_name(row.full_name).casefold()].append(row)
     created=updated=skipped=0
-    for key,records in grouped.items():
+    for _,records in grouped.items():
         name=records[-1]['data']['full_name'];phones={_phone(record['phone']) for record in records if _phone(record['phone'])}
-        matches=existing.get(key,[])
-        if len(matches)>1:
+        key=name.casefold();matches=existing.get(key,[])
+        source_refs={(record['sheet'],record['row']) for record in records}
+        source_matches=[row for row in matches if any((event.get('sheet'),event.get('row')) in source_refs
+            for event in (row.source_data or {}).get('funnel_sources',[]))]
+        reserve_without_phone=not phones and all(record['sheet']==RESERVE_SHEET for record in records)
+        if len(source_matches)==1:row=source_matches[0]
+        elif len(matches)>1:
             exact=[row for row in matches if _phone(row.phone) in phones]
-            if len(exact)!=1:raise ValidationError(f'В портале найдено несколько карточек с ФИО «{name}». Объедините их перед импортом.')
-            row=exact[0]
-        else:row=matches[0] if matches else None
+            if len(exact)==1:row=exact[0]
+            elif not exact and (phones or reserve_without_phone):row=None
+            else:raise ValidationError(f'В портале найдено несколько карточек с ФИО «{name}». Объедините их перед импортом.')
+        elif matches:
+            existing_phone=_phone(matches[0].phone)
+            row=None if reserve_without_phone or phones and existing_phone and existing_phone not in phones else matches[0]
+        else:row=None
         current=_current_record(records);profile={}
         for record in sorted(records,key=lambda item:(item['event_date'],SOURCE_SHEETS.index(item['sheet']),item['row'])):
             profile.update({field:value for field,value in record['data'].items() if field in PROFILE_KEYS and value})

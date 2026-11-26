@@ -193,6 +193,10 @@ class TalentPoolForm(forms.ModelForm):
         objects=ConstructionObject.objects.filter(company=company).select_related('parent').order_by('name','pk')
         self.fields['construction_object'].queryset=objects;self.fields['construction_object'].empty_label='Выберите объект / проект';self.fields['construction_object'].required=True
         self.fields['construction_object'].label='Строительный участок / объект'
+        if self.instance.stage=='RESERVE':
+            self.fields['position'].required=False;self.fields['construction_object'].required=False
+            self.fields['position'].help_text='Для быстрой записи в резерве поле необязательно. Заполните его перед переводом кандидата в работу.'
+            self.fields['construction_object'].help_text='Для быстрой записи в резерве поле необязательно. Заполните его перед переводом кандидата в работу.'
         by_id={row.pk:row for row in objects}
         def object_label(row):
             names=[row.name];seen={row.pk};parent=row.parent_id
@@ -280,6 +284,9 @@ class TalentPoolForm(forms.ModelForm):
         files=[file for field in ('base_documents','manager_documents','security_documents') for file in (data.get(field) or [])]
         if len(files)>10:self.add_error(None,'За один раз можно добавить до 10 файлов во все разделы документов.')
         requested_stage=data.get('stage')
+        if requested_stage and requested_stage!='RESERVE':
+            if not data.get('position'):self.add_error('position','Выберите должность перед переводом кандидата из резерва.')
+            if not data.get('construction_object'):self.add_error('construction_object','Выберите объект перед переводом кандидата из резерва.')
         if requested_stage and requested_stage!=self._original_stage and not allowed_manual_stage(self._original_stage,requested_stage):
             self.add_error('stage','Для возврата по маршруту используйте отдельное действие «Вернуть этап» и укажите причину.')
         new_city=' '.join((data.get('new_base_city') or '').split());selected_city=data.get('base_city')
@@ -306,7 +313,28 @@ class TalentPoolForm(forms.ModelForm):
 
 
 class TalentPoolImportForm(forms.Form):
-    file=forms.FileField(label='Файл Excel',help_text='Поддерживается XLSX. Будут собраны единые карточки из пяти листов воронки.')
+    file=forms.FileField(label='Файл Excel',help_text='Поддерживается XLSX. В том числе лист «КР» будет загружен на этап «Резерв».')
+
+
+class ReserveCandidateForm(forms.Form):
+    full_name=forms.CharField(label='ФИО',max_length=250)
+    phone=forms.CharField(label='Телефон',max_length=100,required=False)
+    position_name=forms.CharField(label='Профессия / должность',max_length=250,required=False)
+    notes=forms.CharField(label='Примечание',required=False,widget=forms.Textarea(attrs={'rows':3}))
+    responsible_hr=forms.ModelChoiceField(label='Рекрутер',required=False,queryset=RecruitmentSpecialist.objects.none(),
+        empty_label='Не назначен')
+    started_on=forms.DateField(label='Дата добавления в резерв',required=False,
+        widget=forms.DateInput(format='%Y-%m-%d',attrs={'type':'date'}))
+    def __init__(self,*args,company,user,**kwargs):
+        super().__init__(*args,**kwargs)
+        specialists=RecruitmentSpecialist.objects.filter(company=company,is_active=True).order_by('name','pk')
+        self.fields['responsible_hr'].queryset=specialists
+        linked=specialists.filter(user=user).first()
+        if linked:self.initial.setdefault('responsible_hr',linked.pk)
+        self.initial.setdefault('started_on',timezone.localdate())
+    def clean_full_name(self):return ' '.join((self.cleaned_data.get('full_name') or '').split())
+    def clean_phone(self):return ' '.join((self.cleaned_data.get('phone') or '').split())
+    def clean_position_name(self):return ' '.join((self.cleaned_data.get('position_name') or '').split())
 
 
 class ArrivalForm(RevisionForm):

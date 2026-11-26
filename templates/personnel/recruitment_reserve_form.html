@@ -1,0 +1,11 @@
+{% extends 'personnel/recruitment_base.html' %}
+{% block title %}Добавить в резерв{% endblock %}
+{% block recruitment_content %}
+<p><a href="{% url 'personnel:recruitment_list' %}?candidate_stage=reserve">← К кадровому резерву</a></p>
+<div class="recruitment-heading"><div><h2 class="h4 mb-1">Быстро добавить в резерв</h2><p class="text-muted mb-0">Достаточно указать ФИО. Остальные сведения можно дополнить позже в карточке кандидата.</p></div></div>
+<form method="post" class="card card-body recruitment-form">{% csrf_token %}
+{% if duplicates %}<section class="candidate-duplicate-alert" role="alert"><h3 class="h6">Возможный дубль</h3><p>Совпали ФИО и телефон. Можно открыть существующую карточку либо всё равно создать новую.</p><ul>{% for duplicate in duplicates %}<li><a href="{% url 'personnel:recruitment_candidate_card' duplicate.pk %}"><strong>{{ duplicate.full_name }}</strong> · {{ duplicate.phone }} · {{ duplicate.stage_label }}</a>{% if duplicate.archived %} · архив{% endif %}</li>{% endfor %}</ul><button class="btn btn-warning" type="submit" name="duplicate_action" value="create_anyway">Всё равно создать новую запись</button></section>{% endif %}
+{% include 'forms/fields.html' with form=form %}
+<div class="recruitment-actions mt-3"><button class="btn btn-primary" type="submit">Добавить в резерв</button><a class="btn btn-outline-secondary" href="{% url 'personnel:recruitment_list' %}?candidate_stage=reserve">Отмена</a></div>
+</form>
+{% endblock %}

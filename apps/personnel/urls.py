@@ -104,6 +104,7 @@ urlpatterns += [
     path('recruitment/specialists/<int:pk>/',recruitment.specialist_edit,name='recruitment_specialist_edit'),
     path('recruitment/requests/', recruitment.request_list, {'recruitment_page':'requests'}, name='recruitment_requests'),
     path('recruitment/pool/',recruitment.pool_list,name='recruitment_pool'),
+    path('recruitment/reserve/add/',recruitment.reserve_create,name='recruitment_reserve_create'),
     path('recruitment/pool/add/',recruitment.pool_edit,name='recruitment_pool_create'),
     path('recruitment/pool/import/',recruitment.pool_import,name='recruitment_pool_import'),
     path('recruitment/pool/<int:pk>/',recruitment.pool_edit,name='recruitment_pool_edit'),

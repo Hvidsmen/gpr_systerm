@@ -783,6 +783,49 @@ class RecruitmentTests(TestCase):
         self.client.force_login(self.recruiter)
         form=self.client.get(reverse('personnel:recruitment_pool_edit',args=[row.pk])).context['form']
         self.assertEqual(form['base_city'].value(),row.base_city_id)
+
+    def test_kr_sheet_imports_distinct_people_to_reserve_and_is_idempotent(self):
+        from openpyxl import Workbook
+        from .models import TalentPoolCandidate
+        from .talent_pool_import import HEADERS,RESERVE_HEADERS,import_sheet
+        workbook=Workbook();store=workbook.active;store.title='Магазин 2026';store.append(HEADERS)
+        reserve=workbook.create_sheet('КР');reserve.append(RESERVE_HEADERS)
+        reserve.append(['2026-01-05','Александр',self.position.name,89111111111,'Первый','Петров'])
+        reserve.append(['2026-01-06','Александр','Машинист',89222222222,'Второй','Петров'])
+        reserve.append(['2026-01-07','Александр','Слесарь',None,'Без телефона','Петров'])
+        payload=BytesIO();workbook.save(payload);payload.seek(0)
+        self.assertEqual(import_sheet(self.recruiter,payload),{'created':3,'updated':0,'skipped':0})
+        rows=list(TalentPoolCandidate.objects.filter(full_name='Александр').order_by('phone','pk'))
+        self.assertEqual(len(rows),3);self.assertTrue(all(row.stage=='RESERVE' for row in rows))
+        self.assertEqual({row.phone for row in rows},{'','89111111111','89222222222'})
+        self.assertTrue(all(row.source_data['source_sheet']=='КР' for row in rows))
+        self.assertTrue(all(row.source_data['funnel_sources'][0]['stage']=='RESERVE' for row in rows))
+        self.assertEqual(next(row for row in rows if row.phone=='89111111111').position,self.position)
+        payload.seek(0);self.assertEqual(import_sheet(self.recruiter,payload),{'created':0,'updated':0,'skipped':3})
+        self.client.force_login(self.recruiter)
+        page=self.client.get(reverse('personnel:recruitment_list'),{'candidate_stage':'reserve'})
+        groups={row['label']:row['count'] for row in page.context['funnel_groups']}
+        self.assertEqual(groups['Резерв'],3);self.assertEqual(groups['Магазин'],0)
+
+    def test_quick_reserve_record_can_be_created_edited_and_deleted(self):
+        from .models import TalentPoolCandidate,TalentPoolStageEvent
+        self.client.force_login(self.recruiter);url=reverse('personnel:recruitment_reserve_create')
+        self.assertContains(self.client.get(url),'Достаточно указать ФИО')
+        response=self.client.post(url,{'full_name':'  Быстрый   Кандидат ','phone':'8 900 000-00-01',
+            'position_name':'Новая профессия','notes':'Позвонить через неделю','responsible_hr':'','started_on':'2026-11-26'})
+        row=TalentPoolCandidate.objects.get(full_name='Быстрый Кандидат')
+        self.assertRedirects(response,reverse('personnel:recruitment_candidate_card',args=[row.pk]))
+        self.assertEqual(row.stage,'RESERVE');self.assertEqual(row.source_data['position'],'Новая профессия')
+        self.assertTrue(TalentPoolStageEvent.objects.filter(candidate=row,to_stage='RESERVE',note__contains='быстрая запись').exists())
+        edit=self.client.get(reverse('personnel:recruitment_pool_edit',args=[row.pk]))
+        self.assertFalse(edit.context['form'].fields['position'].required)
+        self.assertFalse(edit.context['form'].fields['construction_object'].required)
+        duplicate=self.client.post(url,{'full_name':'Быстрый Кандидат','phone':'89000000001',
+            'position_name':'','notes':'','responsible_hr':'','started_on':'2026-11-26'})
+        self.assertContains(duplicate,'Возможный дубль');self.assertEqual(TalentPoolCandidate.objects.count(),1)
+        deleted=self.client.post(reverse('personnel:recruitment_candidate_delete',args=[row.pk]),{'return_to':'bank'})
+        self.assertRedirects(deleted,reverse('personnel:recruitment_list'))
+        self.assertFalse(TalentPoolCandidate.objects.filter(pk=row.pk).exists())
     def test_all_candidates_is_paginated_and_filters_are_kept_in_page_links(self):
         from .models import TalentPoolCandidate
         TalentPoolCandidate.objects.bulk_create([

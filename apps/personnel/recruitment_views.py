@@ -16,7 +16,7 @@ from .models import (RecruitmentRequest,RecruitmentCandidate,RecruitmentSpeciali
     TalentPoolCandidate,TalentPoolStageEvent,TalentPoolDocument,MovementReviewRequest,Camp)
 from . import recruitment as service
 from .recruitment_forms import (RequestForm,CandidateForm,ArrivalForm,RevisionForm,ReasonForm,TalentPoolForm,
-    TalentPoolImportForm,BulkArrivalCommonForm,BulkArrivalRowForm,RecruiterAssignmentForm,RecruitmentSpecialistForm,
+    TalentPoolImportForm,ReserveCandidateForm,BulkArrivalCommonForm,BulkArrivalRowForm,RecruiterAssignmentForm,RecruitmentSpecialistForm,
     ClosureReasonForm)
 from .recruitment_models import (POOL_UNAVAILABLE_STAGES,RECRUITMENT_SYSTEM_STAGES,RECRUITMENT_TERMINAL_STAGES,
     RECRUITMENT_APPROVAL_FLOW)
@@ -28,7 +28,8 @@ from .recruitment_employment import (REVIEW_KEY,employment_confirmed,link_candid
 
 FUNNEL_GROUPS=[
     ('work','В работе',{'NEW','SCREENING','HR_INTERVIEW','MANAGER_APPROVAL','SECURITY_CHECK','MEDICAL_DOCUMENTS','PASS_PROCESSING'}),
-    ('selected','Магазин',{'SELECTED','READY','RESERVE'}),
+    ('selected','Магазин',{'SELECTED','READY'}),
+    ('reserve','Резерв',{'RESERVE'}),
     ('transferred','Поставлены на заезд',{'TRANSFERRED'}),
     ('approved','Не заехали',{'ARRIVAL_APPROVED'}),
     ('arrived','Заехали',{'ARRIVED'}),
@@ -567,6 +568,43 @@ def pool_edit(request,pk=None):
         messages.success(request,'Кандидат сохранён в общем пуле.');return redirect('personnel:recruitment_pool')
     return render(request,'personnel/recruitment_form.html',{**context(request.user),'title':'Карточка кандидата общего пула','form':form,
         'pool_form':True,'editing_pool_candidate':row,'duplicate_candidates':form.duplicate_candidates})
+
+
+@login_required
+@require_http_methods(['GET','POST'])
+def reserve_create(request):
+    """Create a deliberately small candidate card directly on the reserve stage."""
+    require_roles(request.user,service.RECRUIT)
+    form=ReserveCandidateForm(request.POST if request.method=='POST' else None,
+        company=request.user.company,user=request.user)
+    duplicates=[]
+    if request.method=='POST' and form.is_valid():
+        data=form.cleaned_data
+        duplicates=service.duplicate_candidates(request.user.company,data['full_name'],data['phone'])
+        create_anyway=request.POST.get('duplicate_action')=='create_anyway'
+        if duplicates and not create_anyway:
+            form.add_error(None,'Такой кандидат уже есть. Откройте существующую карточку или подтвердите создание новой.')
+        else:
+            position_name=data['position_name'];matches=list(Position.objects.filter(
+                company=request.user.company,name__iexact=position_name)[:2]) if position_name else []
+            position=matches[0] if len(matches)==1 else None
+            started_on=data['started_on'] or timezone.localdate();responsible=data['responsible_hr']
+            source={'origin':'manual_reserve','source_sheet':'Ручной резерв','funnel_stage':'RESERVE',
+                'full_name':data['full_name'],'phone':data['phone'],'position':position_name,
+                'notes':data['notes'],'responsible_hr':responsible.name if responsible else '',
+                'reserve_started_on':started_on.isoformat()}
+            source['funnel_sources']=[{'sheet':'Ручной резерв','row':0,'stage':'RESERVE','stage_label':'Резерв',
+                'event_date':started_on.isoformat(),'position':position_name,'construction_site':'','phone':data['phone'],
+                'details':data['notes'],'data':dict(source)}]
+            with transaction.atomic():
+                row=TalentPoolCandidate.objects.create(company=request.user.company,full_name=data['full_name'],phone=data['phone'],
+                    notes=data['notes'],position=position,responsible_hr=responsible,stage='RESERVE',is_active=True,
+                    source_data=source,created_by=request.user)
+                TalentPoolStageEvent.objects.create(company=request.user.company,candidate=row,from_stage='RESERVE',
+                    to_stage='RESERVE',actor=request.user,note='Создана быстрая запись в кадровом резерве.')
+            messages.success(request,f'{row.full_name} добавлен в резерв.')
+            return redirect('personnel:recruitment_candidate_card',pk=row.pk)
+    return render(request,'personnel/recruitment_reserve_form.html',{**context(request.user),'form':form,'duplicates':duplicates})
 
 
 @login_required
