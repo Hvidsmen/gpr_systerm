@@ -764,6 +764,25 @@ class RecruitmentTests(TestCase):
         self.client.force_login(self.recruiter);page=self.client.get(reverse('personnel:recruitment_pool'))
         self.assertContains(page,'Монтажник');self.assertContains(page,'КТП');self.assertContains(page,'Уфа')
         self.assertContains(page,reverse('personnel:recruitment_pool_import'))
+
+    def test_excel_russian_base_city_is_created_and_linked_when_catalogue_row_is_missing(self):
+        from openpyxl import Workbook
+        from .models import BaseCity,TalentPoolCandidate
+        from .talent_pool_import import HEADERS,import_sheet
+        self.assertFalse(BaseCity.objects.filter(company=self.company,name='Екатеринбург').exists())
+        workbook=Workbook();sheet=workbook.active;sheet.title='Магазин 2026';sheet.append(HEADERS)
+        values=['']*len(HEADERS)
+        values[0]=1;values[1]='Кандидат с городом из Excel';values[2]='Монтажник';values[3]='КТП'
+        values[6]='89991234567';values[12]='г. Екатеринбург'
+        sheet.append(values)
+        payload=BytesIO();workbook.save(payload);payload.seek(0)
+        self.assertEqual(import_sheet(self.recruiter,payload),{'created':1,'updated':0,'skipped':0})
+        row=TalentPoolCandidate.objects.get(full_name='Кандидат с городом из Excel')
+        self.assertEqual(row.base_city.name,'Екатеринбург')
+        self.assertEqual(row.source_data['base_city'],'Екатеринбург')
+        self.client.force_login(self.recruiter)
+        form=self.client.get(reverse('personnel:recruitment_pool_edit',args=[row.pk])).context['form']
+        self.assertEqual(form['base_city'].value(),row.base_city_id)
     def test_all_candidates_is_paginated_and_filters_are_kept_in_page_links(self):
         from .models import TalentPoolCandidate
         TalentPoolCandidate.objects.bulk_create([

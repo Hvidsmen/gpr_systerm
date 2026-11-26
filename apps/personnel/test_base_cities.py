@@ -109,3 +109,13 @@ class BaseCityCatalogueTests(TestCase):
         self.client.force_login(self.admin)
         page=self.client.get(reverse('personnel:base_city_list'))
         self.assertEqual(len(page.context['cities']),50);self.assertGreater(page.context['city_page'].paginator.num_pages,1)
+
+    def test_restore_excel_city_migration_links_existing_candidate(self):
+        city=BaseCity.objects.create(company=self.company,name='Челябинск')
+        candidate=TalentPoolCandidate.objects.create(company=self.company,full_name='Город остался в Excel',
+            source_data={'base_city':'г. Челябинск'},created_by=self.recruiter)
+        migration=import_module('apps.personnel.migrations.0073_restore_excel_base_cities')
+        migration.restore_excel_base_cities(django_apps,None)
+        candidate.refresh_from_db()
+        self.assertEqual(candidate.base_city,city)
+        self.assertEqual(candidate.source_data['base_city'],'Челябинск')

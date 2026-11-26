@@ -67,7 +67,16 @@ def _catalogue_match(model,company,name):
     if not name:return None
     if model is BaseCity:
         from . import base_cities
-        return base_cities.find(company,name,active=True)
+        city=base_cities.find(company,name,active=True)
+        if city:return city
+        # Companies created after the catalogue migration may not contain all
+        # Russian cities. Keep a valid Excel value linked to the card instead
+        # of leaving it only in source_data.
+        if base_cities.find(company,name,active=False):return None
+        from .russian_cities import RUSSIAN_CITIES,normalize_city_name
+        normalized=normalize_city_name(name)
+        canonical=next((city for city in RUSSIAN_CITIES if city.casefold()==normalized.casefold()),None)
+        return base_cities.create(company=company,name=canonical) if canonical else None
     queryset=model.objects.filter(company=company)
     matches=list(queryset.filter(name__iexact=name)[:2])
     if len(matches)==1:return matches[0]
@@ -219,6 +228,7 @@ def import_sheet(user,file):
         construction_object=(row.construction_object if row and row.construction_object_id else
             _catalogue_match(ConstructionObject,user.company,source.get('construction_site')))
         base_city=(row.base_city if row and row.base_city_id else _catalogue_match(BaseCity,user.company,source.get('base_city')))
+        if base_city:source['base_city']=base_city.name
         ready_on=(row.ready_for_arrival_on if row and row.ready_for_arrival_on else _profile_date(source,'ready_for_arrival_on','planned_mobilization','readiness'))
         manager_on=(row.manager_approved_on if row and row.manager_approved_on else _profile_date(source,'manager_approved_on','manager_approval','customer_approval'))
         security_on=(row.security_approved_on if row and row.security_approved_on else _profile_date(source,'security_approved_on','security_approval','security_result'))
