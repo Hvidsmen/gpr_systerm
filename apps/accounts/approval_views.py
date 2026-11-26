@@ -4,7 +4,7 @@ from django.core.exceptions import ValidationError
 from django.shortcuts import redirect, render
 
 from core.permissions import require_roles
-from .approval_assignments import PROCESS_STAGES, disable, replace, sync_active
+from .approval_assignments import PROCESS_STAGES, accepted_roles, disable, replace, sync_active
 from .models import ApprovalAssignment, ApprovalAssignmentChange, ApprovalNotice, ApprovalObserver, Role, User
 
 
@@ -12,6 +12,22 @@ from .models import ApprovalAssignment, ApprovalAssignmentChange, ApprovalNotice
 def settings_view(request):
     require_roles(request.user,{'ADMIN'})
     if request.method=='POST':
+        if request.POST.get('action')=='save_formation_groups':
+            role=request.POST.get('formation_role','')
+            if role not in {'TECH_HEAD','SBO_HEAD'}:
+                messages.error(request,'Неизвестная служба формирования плана.')
+                return redirect('accounts:approval_settings')
+            from django.db import transaction
+            from apps.resources.models import BrigadeGroup
+            from apps.planning.models import PlanLaborGroupPermission
+            groups=list(BrigadeGroup.objects.filter(company=request.user.company,pk__in=request.POST.getlist('groups')))
+            with transaction.atomic():
+                PlanLaborGroupPermission.objects.filter(company=request.user.company,role_code=role).delete()
+                PlanLaborGroupPermission.objects.bulk_create([
+                    PlanLaborGroupPermission(company=request.user.company,role_code=role,group=group) for group in groups
+                ])
+            messages.success(request,'Доступные группы должностей сохранены.')
+            return redirect('accounts:approval_settings')
         if request.POST.get('action')=='add_observer':
             try:
                 user=User.objects.get(pk=request.POST.get('observer'),company=request.user.company,
@@ -81,9 +97,11 @@ def settings_view(request):
         stage_rows=[]
         for code,(label,role) in stages.items():
             choices=User.objects.filter(company=request.user.company,is_active=True,archived_at__isnull=True,
-                role__code__in={role,'ADMIN'}).select_related('role').order_by('last_name','first_name','username')
+                role__code__in=accepted_roles(process,code,role)|{'ADMIN'}).select_related('role').order_by('last_name','first_name','username')
             rules=assignments.get((process,code),[])
-            stage_rows.append({'code':code,'label':label,'role':role,'role_label':role_names.get(role,role),
+            accepted=accepted_roles(process,code,role)
+            role_label=' / '.join(role_names.get(item,item) for item in sorted(accepted))
+            stage_rows.append({'code':code,'label':label,'role':role,'role_label':role_label,
                 'assignment':next((row for row in rules if not row.construction_object_id and not row.camp_id),None),
                 'assignments':rules,'choices':choices})
         rows.append({'code':process,'label':process_label,'stages':stage_rows})
@@ -96,7 +114,13 @@ def settings_view(request):
         'last_name','first_name','username')
     from apps.projects.models import ConstructionObject
     from apps.personnel.models import Camp
+    from apps.resources.models import BrigadeGroup
+    from apps.planning.models import PlanLaborGroupPermission
     objects=ConstructionObject.objects.filter(company=request.user.company).select_related('project').order_by('project__name','name')
     camps=Camp.objects.filter(company=request.user.company,is_active=True).order_by('name')
+    labor_groups=list(BrigadeGroup.objects.filter(company=request.user.company).order_by('sort_order','name'))
+    formation_selected={role:set(PlanLaborGroupPermission.objects.filter(company=request.user.company,role_code=role).values_list('group_id',flat=True)) for role in ['TECH_HEAD','SBO_HEAD']}
+    formation_groups=[{'code':role,'label':label,'groups':[{'group':group,'selected':group.pk in formation_selected[role]} for group in labor_groups]} for role,label in [('TECH_HEAD','Техническая служба'),('SBO_HEAD','Служба СБО')]]
     return render(request,'accounts/approval_settings.html',{'processes':rows,'history':history,'notices':notices,
-        'observers':observers,'observer_choices':observer_choices,'approval_objects':objects,'approval_camps':camps})
+        'observers':observers,'observer_choices':observer_choices,'approval_objects':objects,'approval_camps':camps,
+        'formation_groups':formation_groups})

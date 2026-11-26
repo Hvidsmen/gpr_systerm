@@ -41,17 +41,17 @@ class PreparationTests(TestCase):
         for work_id in estimate_review.work_ids(owner):estimate_review.review_work(self.estimator,task,work_id,True)
         return estimate_review.finish(self.estimator,task,True)
 
-    def test_parallel_tasks_and_manager_submits_only_when_both_branches_ready(self):
+    def test_parallel_tasks_and_planner_submits_only_when_both_branches_ready(self):
         record=self.handoff()
         self.assertTrue(WorkTask.objects.filter(version=self.version,assigned_to=self.manager,key=f'prepare-resources:{record.pk}',status='OPEN').exists())
         self.assertTrue(WorkTask.objects.filter(version=self.version,assigned_to=self.estimator,kind='ESTIMATE',status='OPEN').exists())
-        with self.assertRaises(ValidationError):GlobalPlanService.transition(self.version,self.manager,'submit')
+        with self.assertRaises(ValidationError):GlobalPlanService.transition(self.version,self.planner,'submit')
         preparation.ready(self.manager,self.version)
-        with self.assertRaises(ValidationError):GlobalPlanService.transition(self.version,self.manager,'submit')
+        with self.assertRaises(ValidationError):GlobalPlanService.transition(self.version,self.planner,'submit')
         self.checked()
-        with self.assertRaises(PermissionDenied):GlobalPlanService.transition(self.version,self.planner,'submit')
+        with self.assertRaises(PermissionDenied):GlobalPlanService.transition(self.version,self.manager,'submit')
         with self.assertRaises(PermissionDenied):GlobalPlanService.transition(self.version,self.other_manager,'submit')
-        submitted=GlobalPlanService.transition(self.version,self.manager,'submit')
+        submitted=GlobalPlanService.transition(self.version,self.planner,'submit')
         self.assertEqual(submitted.status,'SUBMITTED')
         submitted=departments(submitted,self.approvers)
         approved=GlobalPlanService.transition(submitted,self.approvers['CEO'],'approve')
@@ -62,12 +62,12 @@ class PreparationTests(TestCase):
         self.handoff();task=self.checked();preparation.ready(self.manager,self.version)
         ResourceMonthAllocation.objects.create(company=self.company,version=self.version,month=JAN,kind='labor',brigade=self.brigade,count=3)
         self.assertTrue(estimate_review.check_valid(self.version,task))
-        with self.assertRaisesMessage(ValidationError,'подтвердите ресурсы заново'):preparation.require_submission(self.manager,self.version)
+        with self.assertRaisesMessage(ValidationError,'подтвердите ресурсы заново'):preparation.require_submission(self.planner,self.version)
         preparation.ready(self.manager,self.version)
-        preparation.require_submission(self.manager,self.version)
+        preparation.require_submission(self.planner,self.version)
         self.version.work_allocations.update(quantity=11)
         self.assertFalse(estimate_review.check_valid(self.version,task))
-        with self.assertRaises(ValidationError):preparation.require_submission(self.manager,self.version)
+        with self.assertRaises(ValidationError):preparation.require_submission(self.planner,self.version)
 
     def test_planner_drafts_resources_but_manager_confirms_them(self):
         self.handoff()
@@ -88,7 +88,7 @@ class PreparationTests(TestCase):
         response=self.client.post(url,{'action':'handoff','manager':self.manager.pk,'estimator':self.estimator.pk})
         self.assertEqual(response.status_code,302)
         self.client.force_login(self.manager)
-        self.assertContains(self.client.get(url,follow=True),'Ресурсы определены')
+        self.assertContains(self.client.get(url,follow=True),'Ресурсная часть готова')
         data={'action':'save_resources','month':str(JAN),'resources-TOTAL_FORMS':'1','resources-INITIAL_FORMS':'0','resources-0-month':str(JAN),'resources-0-kind':'labor','resources-0-brigade':self.brigade.pk,'resources-0-count':'3','resources-0-hours':'8','resources-0-rate':'0','resources-0-liters':'0','resources-0-balance':'0'}
         response=self.client.post(url,data)
         self.assertEqual(response.status_code,302, getattr(response,'context',None) and response.context['resource_forms'].errors)
@@ -115,10 +115,10 @@ class PreparationTests(TestCase):
         self.assertTrue(estimate_review.check_valid(schedule,task))
         with self.assertRaises(PermissionDenied):preparation.ready(self.planner,schedule)
         preparation.ready(self.manager,schedule)
-        with self.assertRaises(PermissionDenied):smg_transition(self.planner,schedule,'submit')
-        result=smg_transition(self.manager,schedule,'submit')
+        with self.assertRaises(PermissionDenied):smg_transition(self.manager,schedule,'submit')
+        result=smg_transition(self.planner,schedule,'submit')
         self.assertEqual(result.status,'SUBMITTED')
-        for role,action in [('PRODUCTION_HEAD','approve_production'),('HR_HEAD','approve_hr'),('TECH_HEAD','approve_tech'),('SECURITY_HEAD','approve_security'),('SBO_HEAD','approve_sbo'),('CEO','approve')]:
+        for role,action in [('MANAGER','approve_project'),('PRODUCTION_HEAD','approve_production'),('HR_HEAD','approve_hr'),('TECH_HEAD','approve_tech'),('SECURITY_HEAD','approve_security'),('SBO_HEAD','approve_sbo'),('CEO','approve')]:
             result=smg_transition(self.approvers[role],result,action)
         from .daily_schedule import activate
         with self.assertRaises(PermissionDenied):activate(self.other_manager,result)
@@ -126,7 +126,7 @@ class PreparationTests(TestCase):
         self.assertEqual(applied.status,'APPLIED')
 
     def test_draft_without_handoff_cannot_skip_preparation(self):
-        with self.assertRaises(ValidationError):preparation.require_submission(self.manager,self.version)
+        with self.assertRaises(ValidationError):preparation.require_submission(self.planner,self.version)
         with self.assertRaises(PermissionDenied):self.handoff_as_manager()
 
     def handoff_as_manager(self):return preparation.handoff(self.manager,self.version,self.manager,self.estimator)
@@ -224,7 +224,7 @@ class PreparationTests(TestCase):
         self.assertContains(response,reverse('planning:task_detail',args=[new_manager.pk]))
         preparation.ready(self.manager,self.version)
         self.checked()
-        GlobalPlanService.transition(self.version,self.manager,'submit')
+        GlobalPlanService.transition(self.version,self.planner,'submit')
         new_manager.refresh_from_db();old_manager.refresh_from_db()
         self.assertEqual(new_manager.status,'DONE')
         self.assertEqual(old_manager.status,'CLOSED_ADMIN')

@@ -18,44 +18,44 @@ class SmgHandoffTests(TestCase):
         daily.save_entry(self.planner,self.entry,self.values(self.entry,amount),0)
         return estimator_check(self.schedule,self.planner)
 
-    def test_equal_month_totals_still_need_manager_and_department_approval(self):
+    def test_equal_month_totals_still_need_planner_launch_and_department_approval(self):
         self.checked()
         self.assertTrue(requires_approval(self.schedule))
         task=WorkTask.objects.get(kind='SUBMISSION')
-        self.assertEqual(task.assigned_to_id,self.manager.pk)
+        self.assertEqual(task.assigned_to_id,self.planner.pk)
         self.assertIn('согласование',task.title)
         self.assertFalse(WorkTask.objects.filter(schedule=self.schedule,kind='APPROVAL').exists())
         with self.assertRaises(PermissionDenied):daily.activate(self.planner,self.schedule)
-        self.client.force_login(self.manager)
+        self.client.force_login(self.planner)
         response=self.client.post(reverse('planning:task_detail',args=[task.pk]),{'action':'launch'})
         self.assertEqual(response.status_code,302)
         self.schedule.refresh_from_db();self.assertEqual(self.schedule.status,'SUBMITTED')
         task.refresh_from_db();self.assertEqual(task.status,'DONE')
         self.assertEqual(DailyScheduleReview.objects.count(),1)
-        for role,action in [('PRODUCTION_HEAD','approve_production'),('HR_HEAD','approve_hr'),('TECH_HEAD','approve_tech'),('SECURITY_HEAD','approve_security'),('SBO_HEAD','approve_sbo'),('CEO','approve')]:self.schedule=transition(self.approvers[role],self.schedule,action)
-        self.assertEqual(daily.activate(self.manager,self.schedule).status,'APPLIED')
+        for role,action in [('MANAGER','approve_project'),('PRODUCTION_HEAD','approve_production'),('HR_HEAD','approve_hr'),('TECH_HEAD','approve_tech'),('SECURITY_HEAD','approve_security'),('SBO_HEAD','approve_sbo'),('CEO','approve')]:self.schedule=transition(self.approvers[role],self.schedule,action)
+        self.assertEqual(daily.activate(self.schedule.preparation.manager,self.schedule).status,'APPLIED')
 
-    def test_deviation_requires_five_heads_then_ceo_then_application(self):
+    def test_deviation_requires_six_parallel_stages_then_ceo_then_application(self):
         self.checked(120)
         with self.assertRaises(PermissionDenied):daily.activate(self.planner,self.schedule)
         launch=WorkTask.objects.get(kind='SUBMISSION')
-        self.client.force_login(self.manager)
+        self.client.force_login(self.planner)
         self.client.post(reverse('planning:task_detail',args=[launch.pk]),{'action':'launch'})
         self.schedule.refresh_from_db();self.assertEqual(self.schedule.status,'SUBMITTED')
         launch.refresh_from_db();self.assertEqual(launch.status,'DONE')
-        self.assertEqual(WorkTask.objects.filter(schedule=self.schedule,kind='APPROVAL',status='OPEN').count(),5)
+        self.assertEqual(WorkTask.objects.filter(schedule=self.schedule,kind='APPROVAL',status='OPEN').count(),6)
         self.assertFalse(WorkTask.objects.filter(schedule=self.schedule,target_role='CEO').exists())
         with self.assertRaises(ValidationError):transition(self.approvers['CEO'],self.schedule,'approve')
         with self.assertRaises(PermissionDenied):daily.save_entry(self.planner,self.entry,self.values(self.entry),1)
         frozen=self.schedule.approval_reviews.get().snapshot
-        for role in ['PRODUCTION_HEAD','HR_HEAD','TECH_HEAD','SECURITY_HEAD','SBO_HEAD','CEO']:
+        for role in ['MANAGER','PRODUCTION_HEAD','HR_HEAD','TECH_HEAD','SECURITY_HEAD','SBO_HEAD','CEO']:
             task=WorkTask.objects.get(schedule=self.schedule,kind='APPROVAL',target_role=role,status='OPEN')
             self.client.force_login(self.approvers[role])
             self.assertEqual(self.client.post(reverse('planning:task_detail',args=[task.pk]),{'action':'approve'}).status_code,302)
         self.schedule.refresh_from_db();self.assertEqual(self.schedule.status,'APPROVED')
         self.assertEqual(self.schedule.approval_reviews.get().snapshot,frozen)
         apply_task=WorkTask.objects.get(schedule=self.schedule,kind='SUBMISSION',status='OPEN')
-        self.client.force_login(self.manager)
+        self.client.force_login(apply_task.assigned_to)
         self.client.post(reverse('planning:task_detail',args=[apply_task.pk]),{'action':'launch'})
         self.schedule.refresh_from_db();self.assertEqual(self.schedule.status,'APPLIED')
         self.source.refresh_from_db();self.assertEqual(self.source.snapshot,self.original)
@@ -69,7 +69,7 @@ class SmgHandoffTests(TestCase):
         daily.save_entry(self.planner,self.entry,self.values(self.entry,125),self.entry.revision)
         sync_company(self.company)
         task.refresh_from_db();self.assertEqual(task.status,'SUPERSEDED')
-        with self.assertRaises(ValidationError):transition(self.manager,self.schedule,'submit')
+        with self.assertRaises(ValidationError):transition(self.planner,self.schedule,'submit')
 
     def test_pre_scope_estimator_check_is_preserved_for_backfill(self):
         from apps.works.models import ProjectWork
@@ -83,26 +83,26 @@ class SmgHandoffTests(TestCase):
         WorkTask.objects.filter(kind='SUBMISSION').delete()
         sync_company(self.company)
         self.assertEqual(WorkTask.objects.filter(kind='SUBMISSION',status='OPEN').count(),1)
-        self.assertEqual(transition(self.manager,self.schedule,'submit').status,'SUBMITTED')
+        self.assertEqual(transition(self.planner,self.schedule,'submit').status,'SUBMITTED')
 
-    def test_handoff_stays_with_assigned_manager_when_admin_assigned_check(self):
+    def test_handoff_stays_with_planner_when_admin_assigned_check(self):
         from apps.accounts.models import User,Role
         check=self.checked()
         admin=User.objects.create_user(username='handoff-admin',company=self.company,role=Role.objects.get(code='ADMIN'))
         check.created_by=admin;check.save(update_fields=['created_by'])
         WorkTask.objects.filter(kind='SUBMISSION').delete()
         sync_company(self.company)
-        self.assertEqual(WorkTask.objects.get(kind='SUBMISSION').assigned_to_id,self.manager.pk)
+        self.assertEqual(WorkTask.objects.get(kind='SUBMISSION').assigned_to_id,self.planner.pk)
 
     def test_rejection_preserves_round_and_requires_new_estimator_check(self):
         self.checked(120)
-        self.schedule=transition(self.manager,self.schedule,'submit')
+        self.schedule=transition(self.planner,self.schedule,'submit')
         review=self.schedule.approval_reviews.get();frozen=review.snapshot
         self.schedule=transition(self.approvers['PRODUCTION_HEAD'],self.schedule,'reject','Исправить объем')
         self.assertEqual(self.schedule.status,'DRAFT')
         self.assertFalse(WorkTask.objects.filter(schedule=self.schedule,kind='APPROVAL',status='OPEN').exists())
         review.refresh_from_db();self.assertEqual(review.snapshot,frozen)
-        with self.assertRaises(ValidationError):transition(self.manager,self.schedule,'submit')
+        with self.assertRaises(ValidationError):transition(self.planner,self.schedule,'submit')
         estimator_check(self.schedule,self.planner)
         self.assertEqual(WorkTask.objects.filter(schedule=self.schedule,kind='SUBMISSION',status='OPEN').count(),1)
 
@@ -116,5 +116,5 @@ class SmgHandoffTests(TestCase):
         self.client.force_login(admin)
         response=self.client.get(reverse('planning:daily_schedule_detail',args=[self.schedule.pk]))
         html=response.content.decode();header=html.split('aria-label="Действия СМГ"',1)[1].split('</nav>',1)[0]
-        self.assertIn('data-smg-open-handoff',header);self.assertIn('Ресурсы определены',header)
+        self.assertIn('data-smg-open-handoff',header);self.assertIn('Ресурсная часть готова',header)
         self.assertNotIn('data-smg-open-handoff',html.split('id="smg-more-actions"',1)[1].split('</div>',1)[0])

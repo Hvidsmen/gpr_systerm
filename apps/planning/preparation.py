@@ -1,4 +1,4 @@
-"""Planner works -> parallel manager resources / estimator -> manager submission."""
+"""Collaborative formation followed by planner-controlled submission."""
 import hashlib,json
 from django.core.exceptions import PermissionDenied,ValidationError
 from django.db import transaction
@@ -12,6 +12,21 @@ from . import estimate_review
 
 def record(owner):
     return PlanPreparation.objects.filter(**({'schedule':owner} if isinstance(owner,DailySchedule) else {'version':owner})).first()
+
+
+def resource_editor_allowed(user, owner, preparation=None):
+    preparation=preparation or record(owner)
+    role=role_code(user)
+    if role=='ADMIN':return True
+    if role not in {'MANAGER','SITE_CHIEF'} or not preparation:return False
+    if preparation.resource_editors.filter(pk=user.pk).exists():return True
+    # Existing records created before collaborative formation keep their owner.
+    return preparation.manager_id==user.pk
+
+
+def project_approver_allowed(user,owner):
+    """Either appointed project manager/site chief may close the shared stage."""
+    return role_code(user) in {'MANAGER','SITE_CHIEF'} and resource_editor_allowed(user,owner)
 
 
 def resource_signature(owner):
@@ -42,24 +57,28 @@ def resource_signature(owner):
 
 
 def require_resource_editor(user,owner):
-    require_roles(user,{'ADMIN','MANAGER'})
+    require_roles(user,{'ADMIN','MANAGER','SITE_CHIEF'})
     if user.company_id!=owner.company_id:raise PermissionDenied
     preparation=record(owner)
-    if role_code(user)!='ADMIN' and (not preparation or preparation.manager_id!=user.pk):raise PermissionDenied('Ресурсы определяет назначенный руководитель проекта.')
+    if not resource_editor_allowed(user,owner,preparation):raise PermissionDenied('Ресурсы формирует назначенный руководитель проекта или начальник участка.')
     if owner.status not in {'DRAFT','REJECTED'}:raise ValidationError('Ресурсы меняются только в черновике.')
     return preparation
 
 
 @transaction.atomic
-def handoff(user,owner,manager,estimator):
+def handoff(user,owner,manager,estimator,resource_editors=()):
     require_roles(user,{'ADMIN','PLANNER'})
     if owner.company_id!=user.company_id:raise PermissionDenied
     require_planning_object(user,owner.construction_object_id)
     owner=type(owner).objects.select_for_update().get(pk=owner.pk,company=user.company)
     if owner.status not in {'DRAFT','REJECTED'}:raise ValidationError('Передать можно только черновик плана.')
-    if manager.company_id!=owner.company_id or not manager.is_active or role_code(manager) not in {'MANAGER','ADMIN'}:raise ValidationError('Выберите действующего руководителя проекта своей компании.')
+    if manager.company_id!=owner.company_id or not manager.is_active or role_code(manager) not in {'MANAGER','SITE_CHIEF','ADMIN'}:raise ValidationError('Выберите действующего руководителя проекта или начальника участка своей компании.')
+    editors={manager,*resource_editors}
+    if any(person.company_id!=owner.company_id or not person.is_active or role_code(person) not in {'MANAGER','SITE_CHIEF','ADMIN'} for person in editors):
+        raise ValidationError('Участниками ресурсной части могут быть руководители проекта и начальники участка своей компании.')
     key={'schedule':owner} if isinstance(owner,DailySchedule) else {'version':owner}
-    preparation,_=PlanPreparation.objects.update_or_create(**key,defaults={'company':owner.company,'manager':manager,'handed_by':user,'resources_fingerprint':'','resources_ready_at':None})
+    preparation,_=PlanPreparation.objects.update_or_create(**key,defaults={'company':owner.company,'manager':manager,'handed_by':user,'resources_fingerprint':'','resources_ready_at':None,'resources_ready_by':None})
+    preparation.resource_editors.set(editors)
     task=estimate_review.assign(user,owner,estimator)
     from .task_services import ensure,state
     candidates=resource_tasks(owner,preparation).select_for_update()
@@ -67,10 +86,11 @@ def handoff(user,owner,manager,estimator):
     if worktask is None:
         previous=candidates.order_by('-pk').first()
         task_key=(f'prepare-resources:{preparation.pk}:retry:{uuid4()}' if previous and previous.status=='CLOSED_ADMIN' else previous.key if previous else f'prepare-resources:{preparation.pk}')
-        worktask=ensure(owner.company,task_key,kind='RESOURCES',title='Определить ресурсы для выполнения работ',description='Работы параллельно проверяет сметчик. Подготовьте ресурсы и запустите согласование после успешной проверки работ.',assigned_to=manager,created_by=user,construction_object_id=owner.construction_object_id,**key)
+        worktask=ensure(owner.company,task_key,kind='RESOURCES',title='Определить ресурсы для выполнения работ',description='Работы параллельно проверяет сметчик. Совместно подготовьте ресурсную часть; после подтверждения планировщик проверит маршрут и запустит согласование.',assigned_to=manager,created_by=user,construction_object_id=owner.construction_object_id,**key)
     worktask.assigned_to=manager;worktask.save(update_fields=['assigned_to'])
     from .task_services import event
-    event(worktask,user,'Передано руководителю',f'Руководитель: {manager.full_name}. Работы параллельно переданы сметчику.')
+    names=', '.join(sorted(person.full_name for person in editors))
+    event(worktask,user,'Передано на совместное формирование',f'Ресурсная часть: {names}. Работы параллельно переданы сметчику.')
     if worktask.status!='OPEN':state(worktask,'OPEN',user,'Работы переданы на подготовку ресурсов.')
     return preparation
 
@@ -82,22 +102,24 @@ def ready(user,owner):
     preparation=require_resource_editor(user,owner)
     if not preparation:raise ValidationError('Планировщик должен передать работы руководителю и сметчику.')
     preparation.resources_fingerprint=resource_signature(owner);preparation.resources_ready_at=timezone.now()
-    preparation.save(update_fields=['resources_fingerprint','resources_ready_at','updated_at'])
+    preparation.resources_ready_by=user
+    preparation.save(update_fields=['resources_fingerprint','resources_ready_at','resources_ready_by','updated_at'])
     from .task_services import event
     task=resource_tasks(owner,preparation).order_by('-pk').first()
-    if task:event(task,user,'Ресурсы определены','Ресурсы подтверждены руководителем проекта.')
+    if task:event(task,user,'Ресурсы определены','Ресурсы подтверждены руководителем проекта или начальником участка.')
     return preparation
 
 
 def require_submission(user,owner):
-    require_roles(user,{'ADMIN','MANAGER'})
+    require_roles(user,{'ADMIN','PLANNER'})
     if user.company_id!=owner.company_id:raise PermissionDenied
     preparation=record(owner)
     if not preparation:raise ValidationError('Сначала передайте работы руководителю проекта и сметчику.')
-    if role_code(user)!='ADMIN' and preparation.manager_id!=user.pk:raise PermissionDenied('Согласование запускает назначенный руководитель проекта.')
+    from core.permissions import require_planning_object
+    require_planning_object(user,owner.construction_object_id)
     from apps.resources.catalogue_review import require_reviewed
     require_reviewed(owner)
-    if not preparation.resources_ready_at or preparation.resources_fingerprint!=resource_signature(owner):raise ValidationError('Руководитель проекта должен завершить определение ресурсов. После изменений подтвердите ресурсы заново.')
+    if not preparation.resources_ready_at or preparation.resources_fingerprint!=resource_signature(owner):raise ValidationError('Руководитель проекта или начальник участка должен подтвердить ресурсную часть. После изменений подтвердите ресурсы заново.')
     estimate_review.require_approved(owner)
 
 

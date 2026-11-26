@@ -924,7 +924,7 @@ class GlobalPlanReview(BaseCompanyModel):
 
 class GlobalPlanDecision(BaseCompanyModel):
     review = models.ForeignKey(GlobalPlanReview, on_delete=models.CASCADE, related_name="decisions")
-    section = models.CharField("Раздел", max_length=20, choices=[("ESTIMATE","Сметчик"),("PRODUCTION","Работы"),("HR","Должность"),("TECH","Техника и ГСМ"),("SECURITY","Служба безопасности"),("SBO","Служба СБО"),("CEO","Генеральный директор"),("PLANNER","Подготовка")])
+    section = models.CharField("Раздел", max_length=20, choices=[("ESTIMATE","Сметчик"),("PROJECT","Руководитель проекта / начальник участка"),("PRODUCTION","Работы"),("HR","Должность"),("TECH","Техника и ГСМ"),("SECURITY","Служба безопасности"),("SBO","Служба СБО"),("CEO","Генеральный директор"),("PLANNER","Подготовка")])
     action = models.CharField("Решение", max_length=20, choices=[("SUBMIT","Отправлен"),("APPROVE","Согласовано"),("REJECT","Возвращён на доработку"),("COMPLETE","Завершён")])
     actor = models.ForeignKey("accounts.User", on_delete=models.SET_NULL, null=True, related_name="global_plan_decisions")
     actor_name = models.CharField("Пользователь", max_length=300)
@@ -1376,7 +1376,7 @@ class WorkTask(BaseCompanyModel):
 
     @property
     def role_label(self):
-        return {'MANAGER':'Руководитель проекта','SITE_CHIEF':'Начальник участка','PEREVAKHTA_SPECIALIST':'Специалист перевахты','MOVEMENT_PARALLEL':'Параллельное согласование','PERSONNEL_CATALOG_MANAGER':'Ответственный за справочник сотрудников','EQUIPMENT_CATALOG_MANAGER':'Ответственный за справочник техники','ESTIMATOR':'Сметчик','PRODUCTION_HEAD':'Руководитель производства','HR_HEAD':'Руководитель кадровой службы','TECH_HEAD':'Руководитель технической службы','SECURITY_HEAD':'Служба безопасности','SBO_HEAD':'Служба СБО','CEO':'Генеральный директор'}.get(self.target_role,'Не назначен')
+        return {'MANAGER':'Руководитель проекта / начальник участка','SITE_CHIEF':'Начальник участка','PEREVAKHTA_SPECIALIST':'Специалист перевахты','MOVEMENT_PARALLEL':'Параллельное согласование','PERSONNEL_CATALOG_MANAGER':'Ответственный за справочник сотрудников','EQUIPMENT_CATALOG_MANAGER':'Ответственный за справочник техники','ESTIMATOR':'Сметчик','PRODUCTION_HEAD':'Руководитель производства','HR_HEAD':'Руководитель кадровой службы','TECH_HEAD':'Руководитель технической службы','SECURITY_HEAD':'Служба безопасности','SBO_HEAD':'Служба СБО','CEO':'Генеральный директор'}.get(self.target_role,'Не назначен')
 
     @property
     def overdue(self):
@@ -1541,12 +1541,33 @@ class PlanPreparation(BaseCompanyModel):
     version = models.OneToOneField(GlobalPlanVersion, null=True, blank=True, on_delete=models.CASCADE, related_name='preparation')
     schedule = models.OneToOneField(DailySchedule, null=True, blank=True, on_delete=models.CASCADE, related_name='preparation')
     manager = models.ForeignKey('accounts.User', on_delete=models.PROTECT, related_name='managed_plan_preparations')
+    resource_editors = models.ManyToManyField(
+        'accounts.User', blank=True, related_name='editable_plan_preparations',
+        verbose_name='Участники формирования ресурсной части',
+    )
     handed_by = models.ForeignKey('accounts.User', on_delete=models.PROTECT, related_name='handed_plan_preparations')
     resources_fingerprint = models.CharField(max_length=64, blank=True)
     resources_ready_at = models.DateTimeField(null=True, blank=True)
+    resources_ready_by = models.ForeignKey(
+        'accounts.User', null=True, blank=True, on_delete=models.PROTECT,
+        related_name='confirmed_plan_resources', verbose_name='Ресурсы подтвердил',
+    )
 
     class Meta:
         constraints = [models.CheckConstraint(condition=(models.Q(version__isnull=False,schedule__isnull=True)|models.Q(version__isnull=True,schedule__isnull=False)),name='preparation_exactly_one_plan')]
+
+
+class PlanLaborGroupPermission(BaseCompanyModel):
+    role_code = models.CharField('Служба', max_length=20, choices=[('TECH_HEAD','Техническая служба'),('SBO_HEAD','Служба СБО')])
+    group = models.ForeignKey('resources.BrigadeGroup', on_delete=models.CASCADE, related_name='plan_formation_permissions', verbose_name='Группа должностей')
+
+    class Meta:
+        ordering=['role_code','group__sort_order','group__name']
+        constraints=[models.UniqueConstraint(fields=['company','role_code','group'],name='unique_plan_labor_group_permission')]
+
+    def clean(self):
+        if self.group_id and self.group.company_id!=self.company_id:
+            raise ValidationError('Группа должностей другой компании.')
 
 from .object_plan_models import ObjectWorkPlan, ObjectWorkPlanRow
 

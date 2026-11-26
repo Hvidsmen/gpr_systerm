@@ -9,6 +9,13 @@
 <div class="alert alert-secondary"><strong>Приоритет условий:</strong> объект + местонахождение → строительный объект → местонахождение → общее назначение. Для ГПР и СМГ применяется условие по объекту; местонахождение — для заезда и выезда.</div>
 
 <section class="card mb-3">
+  <div class="card-header"><h2 class="h5 mb-0">Формирование ГПР и СМГ · группы должностей</h2></div>
+  <div class="card-body"><p class="text-muted">Техническая служба и СБО могут добавлять, менять и удалять только должности из отмеченных групп. Техническая служба дополнительно редактирует технику и ГСМ.</p>
+    <div class="row g-3">{% for section in formation_groups %}<div class="col-lg-6"><form method="post" class="card card-body h-100">{% csrf_token %}<input type="hidden" name="action" value="save_formation_groups"><input type="hidden" name="formation_role" value="{{ section.code }}"><h3 class="h6">{{ section.label }}</h3><div class="d-flex flex-column gap-1 mb-3">{% for row in section.groups %}<label><input type="checkbox" name="groups" value="{{ row.group.pk }}"{% if row.selected %} checked{% endif %}> {{ row.group.name }}</label>{% empty %}<span class="text-muted">Группы должностей не созданы.</span>{% endfor %}</div><button class="btn btn-primary mt-auto">Сохранить группы</button></form></div>{% endfor %}</div>
+  </div>
+</section>
+
+<section class="card mb-3">
   <div class="card-header"><h2 class="h5 mb-0">Общие наблюдатели согласований</h2></div>
   <div class="card-body"><p class="text-muted">Получают информационное письмо при начале каждого этапа. Наблюдатель не получает кнопок решения и не приобретает право согласования.</p>
     <form method="post" class="d-flex gap-2 flex-wrap">{% csrf_token %}<select class="form-select" name="observer" required style="max-width:650px"><option value="">Выберите пользователя с email</option>{% for person in observer_choices %}<option value="{{ person.pk }}">{{ person.full_name }} · {{ person.position|default:person.role.name }} · {{ person.email }}</option>{% endfor %}</select><button class="btn btn-primary" name="action" value="add_observer">Добавить наблюдателя</button></form>

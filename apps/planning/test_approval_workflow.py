@@ -27,7 +27,7 @@ class ApprovalWorkflowTests(TestCase):
     def submit(self):
         version=self.create().baseline_version
         estimator_check(version,self.planner)
-        return GlobalPlanService.transition(version, version.preparation.manager, 'submit')
+        return GlobalPlanService.transition(version, self.planner, 'submit')
 
     def test_approval_list_shows_ceo_stage_before_and_after_decision(self):
         version = self.submit()
@@ -40,9 +40,9 @@ class ApprovalWorkflowTests(TestCase):
         GlobalPlanService.transition(version, self.approvers['CEO'], 'approve')
         self.assertContains(self.client.get(url), 'Утверждено')
 
-    def test_five_parallel_sections_are_required_and_independent(self):
+    def test_six_parallel_sections_are_required_and_independent(self):
         version = self.submit()
-        for code, action in [('TECH_HEAD','approve_tech'), ('SECURITY_HEAD','approve_security'),('SBO_HEAD','approve_sbo'), ('PRODUCTION_HEAD','approve_production'), ('HR_HEAD','approve_hr')]:
+        for code, action in [('MANAGER','approve_project'), ('TECH_HEAD','approve_tech'), ('SECURITY_HEAD','approve_security'),('SBO_HEAD','approve_sbo'), ('PRODUCTION_HEAD','approve_production'), ('HR_HEAD','approve_hr')]:
             with self.assertRaises(ValidationError):
                 GlobalPlanService.transition(version, self.approvers['CEO'], 'approve')
             version = GlobalPlanService.transition(version, self.approvers[code], action)
@@ -50,12 +50,12 @@ class ApprovalWorkflowTests(TestCase):
         version = GlobalPlanService.transition(version, self.approvers['CEO'], 'approve')
         self.assertEqual(version.status, 'APPROVED')
         self.assertEqual(version.approved_by, self.approvers['CEO'])
-        self.assertEqual(current_review(version).decisions.count(), 8)
+        self.assertEqual(current_review(version).decisions.count(), 9)
 
     def test_wrong_roles_cannot_approve_other_sections_or_final_plan(self):
         version = self.submit()
         for user in [self.planner, self.manager, *self.approvers.values()]:
-            for code, action in [('TECH_HEAD','approve_tech'), ('SECURITY_HEAD','approve_security'),('SBO_HEAD','approve_sbo'), ('PRODUCTION_HEAD','approve_production'), ('HR_HEAD','approve_hr'), ('CEO','approve'), ('CEO','complete')]:
+            for code, action in [('MANAGER','approve_project'), ('TECH_HEAD','approve_tech'), ('SECURITY_HEAD','approve_security'),('SBO_HEAD','approve_sbo'), ('PRODUCTION_HEAD','approve_production'), ('HR_HEAD','approve_hr'), ('CEO','approve'), ('CEO','complete')]:
                 if user == self.approvers[code]:
                     continue
                 with self.subTest(user=user.username, action=action), self.assertRaises(PermissionDenied):
@@ -75,9 +75,11 @@ class ApprovalWorkflowTests(TestCase):
         from .task_services import sync_version
         second=User.objects.create_user(username='configured-hr-approver',company=self.company,
             role=Role.objects.get(code='HR_HEAD'))
-        version=self.submit()
+        version=self.create().baseline_version
+        estimator_check(version,self.planner)
         replace(company=self.company,process='GPR',stage_code='HR',user=second,actor=self.admin,
             construction_object=version.construction_object)
+        version=GlobalPlanService.transition(version,self.planner,'submit')
         sync_version(version)
         task=version.work_tasks.get(key__endswith=':HR')
         self.assertEqual(task.assigned_to,second)
@@ -103,7 +105,7 @@ class ApprovalWorkflowTests(TestCase):
         self.assertTrue(current_review(version).decisions.filter(section='HR',actor=owner,comment='Согласовано из письма').exists())
 
     def test_every_head_can_return_whole_plan_with_required_reason(self):
-        for code in ['PRODUCTION_HEAD', 'HR_HEAD', 'TECH_HEAD', 'SECURITY_HEAD', 'SBO_HEAD']:
+        for code in ['MANAGER', 'PRODUCTION_HEAD', 'HR_HEAD', 'TECH_HEAD', 'SECURITY_HEAD', 'SBO_HEAD']:
             version = self.submit()
             with self.assertRaises(ValidationError):
                 GlobalPlanService.transition(version, self.approvers[code], 'reject', '  ')
@@ -123,7 +125,7 @@ class ApprovalWorkflowTests(TestCase):
         row.quantity = 100
         row.save()
         estimator_check(version,self.planner)
-        version = GlobalPlanService.transition(version, version.preparation.manager, 'submit')
+        version = GlobalPlanService.transition(version, self.planner, 'submit')
         self.assertEqual(version.approval_round, 2)
         self.assertEqual(current_review(version).decisions.count(), 2)
         self.assertEqual(version.review_rounds.get(number=1).snapshot, old)
@@ -133,7 +135,7 @@ class ApprovalWorkflowTests(TestCase):
 
     def test_ceo_may_return_approved_plan_and_completion_is_terminal(self):
         version = self.approve(self.create().baseline_version)
-        for code in ['PRODUCTION_HEAD', 'HR_HEAD', 'TECH_HEAD', 'SECURITY_HEAD', 'SBO_HEAD']:
+        for code in ['MANAGER', 'PRODUCTION_HEAD', 'HR_HEAD', 'TECH_HEAD', 'SECURITY_HEAD', 'SBO_HEAD']:
             with self.assertRaises(ValidationError):
                 GlobalPlanService.transition(version, self.approvers[code], 'reject', 'Причина')
         version = GlobalPlanService.transition(version, self.approvers['CEO'], 'reject', 'Новый расчёт')
@@ -151,7 +153,7 @@ class ApprovalWorkflowTests(TestCase):
                     GlobalPlanService.revision(version, self.planner)
             else:
                 with self.assertRaises(ValidationError):
-                    GlobalPlanService.transition(version, version.preparation.manager, action)
+                    GlobalPlanService.transition(version, self.planner, action)
         version.title = 'Change completed'
         with self.assertRaises(ValidationError):
             version.save()
@@ -269,7 +271,7 @@ class ApprovalWorkflowTests(TestCase):
 
     def test_admin_can_approve_each_section_with_correct_audit_and_required_order(self):
         version = self.submit()
-        for section, action in [('PRODUCTION', 'approve_production'), ('HR', 'approve_hr'), ('TECH', 'approve_tech'), ('SECURITY', 'approve_security'), ('SBO','approve_sbo')]:
+        for section, action in [('PROJECT','approve_project'), ('PRODUCTION', 'approve_production'), ('HR', 'approve_hr'), ('TECH', 'approve_tech'), ('SECURITY', 'approve_security'), ('SBO','approve_sbo')]:
             with self.assertRaises(ValidationError):
                 GlobalPlanService.transition(version, self.admin, 'approve')
             version = GlobalPlanService.transition(version, self.admin, action)
@@ -280,7 +282,7 @@ class ApprovalWorkflowTests(TestCase):
                 GlobalPlanService.transition(version, self.admin, action)
         version = GlobalPlanService.transition(version, self.admin, 'approve')
         self.assertEqual(version.approved_by, self.admin)
-        self.assertEqual(current_review(version).decisions.count(), 8)
+        self.assertEqual(current_review(version).decisions.count(), 9)
 
     def test_admin_rework_and_completion_keep_history_and_terminal_status(self):
         version = self.submit()
@@ -293,7 +295,7 @@ class ApprovalWorkflowTests(TestCase):
         self.assertEqual(version.status, 'REJECTED')
         version = self.approve(version)
         version = GlobalPlanService.transition(version, self.admin, 'complete')
-        for action in ['submit','approve_production','approve_hr','approve_tech','approve_security','approve_sbo','approve','reject','complete']:
+        for action in ['submit','approve_project','approve_production','approve_hr','approve_tech','approve_security','approve_sbo','approve','reject','complete']:
             with self.assertRaises(ValidationError):
                 GlobalPlanService.transition(version, self.admin, action, 'Reason')
 
@@ -302,10 +304,10 @@ class ApprovalWorkflowTests(TestCase):
         self.client.force_login(self.admin)
         url = reverse('planning:global_detail', args=[version.pk])
         response = self.client.get(url)
-        for action in ['approve_production', 'approve_hr', 'approve_tech', 'approve_security', 'approve_sbo', 'reject']:
+        for action in ['approve_project','approve_production', 'approve_hr', 'approve_tech', 'approve_security', 'approve_sbo', 'reject']:
             self.assertContains(response, reverse('planning:global_action', args=[version.pk, action]))
         self.assertNotContains(response, reverse('planning:global_action', args=[version.pk, 'approve'])+'"')
-        for action in ['approve_production', 'approve_hr', 'approve_tech', 'approve_security', 'approve_sbo']:
+        for action in ['approve_project','approve_production', 'approve_hr', 'approve_tech', 'approve_security', 'approve_sbo']:
             self.assertEqual(self.client.post(reverse('planning:global_action',args=[version.pk,action])).status_code,302)
         self.assertContains(self.client.get(url),reverse('planning:global_action',args=[version.pk,'approve']))
         foreign_admin = User.objects.create_user(username='other-admin',company=self.foreign_ceo.company,role=Role.objects.get(code='ADMIN'))

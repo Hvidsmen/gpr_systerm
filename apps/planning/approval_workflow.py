@@ -5,7 +5,7 @@ from django.utils import timezone
 from core.permissions import approval_role, require_global_action
 from .approval_context import authorized_transition
 from .models import GlobalPlanVersion, GlobalPlanReview, GlobalPlanDecision
-from core.plan_approval import DEPARTMENTS as SECTIONS, REQUIRED_SECTIONS, DEPARTMENT_ROLES
+from core.plan_approval import DEPARTMENTS as SECTIONS, REQUIRED_SECTIONS, DEPARTMENT_ROLES, ROLE_SECTIONS
 
 
 def current_review(version):
@@ -39,19 +39,25 @@ def transition(version, user, action, comment=''):
         raise ValidationError('Комментарий не должен превышать 4000 символов.')
     role = approval_role(user)
     review = current_review(version)
-    section = dict((r, s) for s, _, r, _ in SECTIONS).get(role, 'CEO')
+    section = ROLE_SECTIONS.get(role, 'CEO')
     if action in {s[3] for s in SECTIONS}:
         section = {a: s for s, _, _, a in SECTIONS}[action]
     if action in {s[3] for s in SECTIONS} | {'approve','reject'} and role!='ADMIN':
         from apps.accounts.approval_assignments import authorized
         expected=dict((s,r) for s,_,r,_ in SECTIONS).get(section,'CEO')
-        if not authorized(user,'GPR',section,expected,construction_object=version.construction_object):raise PermissionDenied('На этом этапе назначен другой согласующий.')
+        allowed=authorized(user,'GPR',section,expected,construction_object=version.construction_object)
+        if section=='PROJECT':
+            from .preparation import project_approver_allowed
+            allowed=allowed or project_approver_allowed(user,version)
+        if not allowed:raise PermissionDenied('На этом этапе назначен другой согласующий.')
     event = 'APPROVE'
     if action == 'submit':
         if version.status not in ['DRAFT', 'REJECTED']:
             raise ValidationError('На согласование отправляется только черновик или план на доработке.')
         from .preparation import require_submission
         require_submission(user,version)
+        from apps.accounts.approval_assignments import require_complete_route
+        require_complete_route(version.company,'GPR',construction_object=version.construction_object)
         from .estimate_review import require_approved, signature
         submitted_fingerprint = signature(version)
         estimator_review = require_approved(version)
@@ -135,10 +141,17 @@ def panel(version, user):
         if section in {'SECURITY','SBO'} and version.status in {'APPROVED','COMPLETED'} and section not in approved:continue
         decision = review.decisions.filter(section=section, action='APPROVE').first() if review else None
         from apps.accounts.approval_assignments import authorized
+        allowed=authorized(user,'GPR',section,assigned,construction_object=version.construction_object)
+        if section=='PROJECT':
+            from .preparation import project_approver_allowed
+            allowed=allowed or project_approver_allowed(user,version)
         sections.append({'label': label, 'decision': decision, 'approved': section in approved and version.status not in ['DRAFT', 'REJECTED'],
-                         'action': action, 'can_approve': submitted and 'ESTIMATE' in approved_sections(review) and authorized(user,'GPR',section,assigned,construction_object=version.construction_object) and not decision})
+                         'action': action, 'can_approve': submitted and 'ESTIMATE' in approved_sections(review) and allowed and not decision})
     from apps.accounts.approval_assignments import authorized
+    from apps.accounts.approval_assignments import route_preview
+    route=route_preview(version.company,'GPR',construction_object=version.construction_object)
     return {'legacy_review': bool(review and review.legacy_approved and version.status not in ['DRAFT', 'REJECTED']), 'approval_sections': sections, 'approval_ready': ready(review),'estimator_ready':bool(estimator_decision),
+            'approval_route':route,'approval_route_ready':not any(row['missing'] for row in route),
             'can_final_approve': submitted and authorized(user,'GPR','CEO','CEO',construction_object=version.construction_object) and ready(review),
             'can_return': (submitted and (role=='ADMIN' or role in DEPARTMENT_ROLES and bool(estimator_decision) or role=='CEO' and ready(review))) or version.status=='APPROVED' and role in {'CEO','ADMIN'},
             'can_complete': version.status == 'APPROVED' and role in {'CEO', 'ADMIN'},

@@ -5,13 +5,13 @@ from decimal import Decimal,InvalidOperation
 from types import SimpleNamespace
 from django.core.exceptions import ValidationError,PermissionDenied
 from django.db import transaction
-from core.permissions import require_roles,PLAN_ROLES
+from core.permissions import require_roles,PLAN_ROLES,role_code
 from .models import DailySchedule,DailyScheduleEntry,ResourceMonthAllocation
 from . import daily_schedule as service
 
 
 def locked(user,schedule):
-    require_roles(user,PLAN_ROLES | {'MANAGER'})
+    require_roles(user,PLAN_ROLES | {'MANAGER','SITE_CHIEF','TECH_HEAD','SBO_HEAD'})
     frozen=getattr(schedule,'_smg_frozen_specs',None)
     schedule=DailySchedule.objects.select_for_update().select_related('source').defer('source__snapshot').get(pk=schedule.pk,company=user.company)
     if frozen and frozen[0]==(schedule.source_id,schedule.month):schedule._smg_frozen_specs=frozen
@@ -34,6 +34,10 @@ def save_table(user,schedule,changes):
             entry=DailyScheduleEntry.objects.select_for_update().filter(pk=pk,schedule=schedule).first()
             if entry is None:raise ValidationError('Строка не относится к этому СМГ.')
             entry.schedule=schedule
+            if entry.kind!='work':
+                from .formation_access import require_entry
+                require_entry(user,entry)
+            elif role_code(user) not in PLAN_ROLES:raise PermissionDenied('Работы добавляет и изменяет только планировщик.')
             stored={(r['date'],r.get('item_id')):r for r in entry.rows}
             fields={name for name,_,_ in service.FIELDS[entry.kind]}
             values=[{field:Decimal(str(service.row_value(entry.kind,stored.get((day.isoformat(),item['id']),{}),field))) for field in fields} for day,item in service.identities(entry)]
@@ -69,8 +73,8 @@ def add_entry(user,schedule,data):
         metadata=specification(work);metadata['history']=[];metadata['original_daily']=[]
         label=work.name;key='work:'+str(work.pk)
     else:
-        from .preparation import require_resource_input
-        require_resource_input(user,schedule)
+        from .formation_access import can_edit_resource
+        if not can_edit_resource(user,schedule,kind,data.get('brigade')):raise PermissionDenied('Этот ресурс не относится к вашему разделу формирования плана.')
         row={'origin':'PLAN','comment':''}
         if kind=='labor':
             brigade=data['brigade']

@@ -5,6 +5,7 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 
 from core.permissions import role_code
+from core.plan_approval import SECTION_ROLES
 from .models import ApprovalAssignment, ApprovalAssignmentChange, User
 
 
@@ -20,6 +21,7 @@ MOVEMENT_STAGES = OrderedDict([
     ('LABOR_ECONOMIST', ('Эксперт по экономике труда и заработной плате', 'LABOR_ECONOMIST')),
 ])
 PLAN_STAGES = OrderedDict([
+    ('PROJECT', ('Руководитель проекта / начальник участка', 'MANAGER')),
     ('PRODUCTION', ('Работы', 'PRODUCTION_HEAD')),
     ('HR', ('Должности', 'HR_HEAD')),
     ('TECH', ('Техника и ГСМ', 'TECH_HEAD')),
@@ -37,6 +39,14 @@ PROCESS_STAGES = OrderedDict([
 def stage(process, stage_code):
     try:return PROCESS_STAGES[process][1][stage_code]
     except KeyError:raise ValidationError('Неизвестный этап согласования.')
+
+
+def accepted_roles(process, stage_code, expected_role=None):
+    """Roles that may perform one route stage; PROJECT deliberately has two."""
+    expected_role = expected_role or stage(process, stage_code)[1]
+    if process in {'GPR', 'SMG'} and stage_code in SECTION_ROLES:
+        return set(SECTION_ROLES[stage_code])
+    return {expected_role}
 
 
 def _object_path(company, construction_object):
@@ -76,10 +86,11 @@ def assignee(company, process, stage_code, expected_role=None, *, construction_o
     """Explicit owner first; a single role holder is the backwards-compatible fallback."""
     expected_role=expected_role or stage(process,stage_code)[1]
     row=assignment(company,process,stage_code,construction_object=construction_object,camp=camp)
+    allowed = accepted_roles(process, stage_code, expected_role)
     if row:
-        valid=row.user.is_active and row.user.company_id==company.pk and row.user.archived_at is None and role_code(row.user) in {expected_role,'ADMIN'}
+        valid=row.user.is_active and row.user.company_id==company.pk and row.user.archived_at is None and role_code(row.user) in allowed|{'ADMIN'}
         return row.user if valid else None
-    people=list(User.objects.filter(company=company,is_active=True,archived_at__isnull=True,role__code=expected_role).order_by('pk')[:2])
+    people=list(User.objects.filter(company=company,is_active=True,archived_at__isnull=True,role__code__in=allowed).order_by('pk')[:2])
     return people[0] if len(people)==1 else None
 
 
@@ -87,8 +98,9 @@ def authorized(user, process, stage_code, expected_role=None, *, construction_ob
     if role_code(user)=='ADMIN':return True
     expected_role=expected_role or stage(process,stage_code)[1]
     row=assignment(user.company,process,stage_code,construction_object=construction_object,camp=camp)
-    if row:return row.user_id==user.pk and row.user.is_active and role_code(user)==expected_role
-    return role_code(user)==expected_role
+    allowed = accepted_roles(process, stage_code, expected_role)
+    if row:return row.user_id==user.pk and row.user.is_active and role_code(user) in allowed
+    return role_code(user) in allowed
 
 
 @transaction.atomic
@@ -98,8 +110,9 @@ def replace(*, company, process, stage_code, user, actor, reason='', constructio
         raise ValidationError('Условие по местонахождению применяется только к заявкам на заезд и выезд.')
     if user.company_id!=company.pk or not user.is_active or user.archived_at is not None:
         raise ValidationError('Выберите активного пользователя своей компании.')
-    if role_code(user) not in {expected_role,'ADMIN'}:
-        raise ValidationError(f'Для этапа «{label}» нужен пользователь с ролью «{expected_role}» или администратор.')
+    allowed = accepted_roles(process, stage_code, expected_role)
+    if role_code(user) not in allowed|{'ADMIN'}:
+        raise ValidationError(f'Для этапа «{label}» нужен пользователь с допустимой ролью или администратор.')
     if construction_object and construction_object.company_id!=company.pk:raise ValidationError('Строительный объект другой компании.')
     if camp and camp.company_id!=company.pk:raise ValidationError('Местонахождение другой компании.')
     current=ApprovalAssignment.objects.select_for_update().filter(company=company,process=process,stage_code=stage_code,
@@ -116,6 +129,21 @@ def replace(*, company, process, stage_code, user, actor, reason='', constructio
             construction_object=construction_object,camp=camp,user=user,changed_by=actor)
     ApprovalAssignmentChange.objects.create(assignment=current,previous_user=previous,new_user=user,changed_by=actor,reason=reason)
     return current
+
+
+def route_preview(company, process, *, construction_object=None):
+    """Resolved immutable approval route shown to the planner before submission."""
+    rows=[]
+    for code,(label,role) in PROCESS_STAGES[process][1].items():
+        owner=assignee(company,process,code,role,construction_object=construction_object)
+        rows.append({'code':code,'label':label,'role':role,'owner':owner,'missing':owner is None})
+    return rows
+
+
+def require_complete_route(company, process, *, construction_object=None):
+    missing=[row['label'] for row in route_preview(company,process,construction_object=construction_object) if row['missing']]
+    if missing:
+        raise ValidationError('Перед запуском назначьте согласующих: '+', '.join(missing)+'.')
 
 
 @transaction.atomic

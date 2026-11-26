@@ -4,8 +4,15 @@ from core.plan_approval import DEPARTMENTS
 
 
 def approval_users(company):
-    return {code: User.objects.create_user(username=f'approval-{company.pk}-{code}', company=company,
-        role=Role.objects.get(code=code)) for code in [*[role for _,_,role,_ in DEPARTMENTS], 'CEO']}
+    users={code: User.objects.create_user(username=f'approval-{company.pk}-{code}', company=company,
+        role=Role.objects.get(code=code)) for code in dict.fromkeys([*[role for _,_,role,_ in DEPARTMENTS], 'CEO'])}
+    from apps.accounts.models import ApprovalAssignment
+    stages=[('PROJECT','MANAGER')]
+    ApprovalAssignment.objects.bulk_create([
+        ApprovalAssignment(company=company,process=process,stage_code=section,user=users[role])
+        for process in ['GPR','SMG'] for section,role in stages
+    ])
+    return users
 
 
 def departments(version, users):

@@ -12,7 +12,7 @@ ROLES = DISPATCHER_ROLES | {TRANSPORT_DISPATCHER,'ADMIN', 'PLANNER', 'MANAGER', 
 MOVEMENT_APPROVAL_ROLES={'SITE_CHIEF','PEREVAKHTA_SPECIALIST','DUDINKA_HEAD','DUDINKA_SECURITY_DEPUTY','CHIEF_MECHANIC','PARAMEDIC','PERSONNEL_SPECIALIST','LABOR_ECONOMIST'}
 ROLES |= MOVEMENT_APPROVAL_ROLES
 PEREVAKHTA_SPECIALIST='PEREVAKHTA_SPECIALIST'
-READ_ROLES = {'ADMIN', 'PLANNER', 'MANAGER', 'OBSERVER', 'ESTIMATOR'} | GLOBAL_APPROVAL_ROLES
+READ_ROLES = {'ADMIN', 'PLANNER', 'MANAGER', 'SITE_CHIEF', 'OBSERVER', 'ESTIMATOR'} | GLOBAL_APPROVAL_ROLES
 PLAN_ROLES = {'ADMIN', 'PLANNER'}
 PERSONNEL_CATALOG_MANAGER = 'PERSONNEL_CATALOG_MANAGER'
 EQUIPMENT_CATALOG_MANAGER = 'EQUIPMENT_CATALOG_MANAGER'
@@ -58,7 +58,7 @@ def approval_role(user):
 
 def require_global_action(user, action):
     roles = {
-        'submit': {'MANAGER'},
+        'submit': {'PLANNER'},
         **ACTION_ROLES,
         'approve': {'CEO'},
         'complete': {'CEO'},
@@ -67,7 +67,7 @@ def require_global_action(user, action):
     if roles is None:
         require_roles(user, PLAN_ROLES)
     elif not user.is_authenticated or not user.company_id or approval_role(user) not in roles | {'ADMIN'}:
-        raise PermissionDenied('Действие доступно ответственному руководителю, генеральному директору или администратору.')
+        raise PermissionDenied('Действие доступно планировщику, ответственному согласующему, генеральному директору или администратору.')
 
 
 PRODUCTION_DISPATCHERS = {'DISPATCHER', 'ALL_FACT_DISPATCHER'}
@@ -263,7 +263,9 @@ def check_route(user, match, method):
     if namespace == 'planning' and name in {'resource_replace_gpr','resource_replace_smg'}:
         require_roles(user, PLAN_ROLES | {'MANAGER'}); return
     if namespace == 'planning' and name in {'workspace_edit','workspace_months'}:
-        require_roles(user, READ_ROLES if method in {'GET','HEAD'} else PLAN_ROLES|{'MANAGER'});return
+        require_roles(user, READ_ROLES if method in {'GET','HEAD'} else PLAN_ROLES|{'MANAGER','SITE_CHIEF','TECH_HEAD','SBO_HEAD'});return
+    if namespace == 'planning' and name=='daily_schedule_detail':
+        require_roles(user,READ_ROLES if method in {'GET','HEAD'} else PLAN_ROLES|{'MANAGER','SITE_CHIEF','TECH_HEAD','SBO_HEAD'});return
     if namespace == 'planning' and name=='smg_cancel_approval':
         require_roles(user,{'ADMIN','CEO'});return
     if namespace == 'planning' and name=='smg_compare':
@@ -295,7 +297,7 @@ def check_route(user, match, method):
         require_roles(user, {'ADMIN', 'HR_HEAD', 'PERSONNEL_DISPATCHER','PEREVAKHTA_SPECIALIST'})
         return
     if namespace == 'planning' and name in {'work_resources_gpr','work_resources_smg','work_resource_edit_gpr','work_resource_edit_smg','work_resources_graph_gpr','work_resources_graph_smg','work_resources_links_gpr','work_resources_links_smg','work_resources_save_smg'}:
-        require_roles(user, READ_ROLES if method in {'GET','HEAD'} else {'ADMIN','PLANNER','MANAGER'})
+        require_roles(user, READ_ROLES if method in {'GET','HEAD'} else {'ADMIN','PLANNER','MANAGER','SITE_CHIEF'})
         return
     if (namespace=='planning' and name in {'design_preview','decomposition_report','decomposition_gpr','decomposition_smg'}) or (namespace=='resources' and name=='equipment_crew'):
         require_roles(user,READ_ROLES if method in {'GET','HEAD'} else PLAN_ROLES)
@@ -383,16 +385,16 @@ def check_route(user, match, method):
         if name=='workspace_add_resource' or name=='workspace_bulk_add' and match.kwargs.get('kind')!='works':
             require_roles(user,{'ADMIN','PLANNER','MANAGER'});return
         if name.startswith('preparation_') or name.startswith('work_resources_'):
-            require_roles(user,READ_ROLES if method in {'GET','HEAD'} else {'ADMIN','PLANNER','MANAGER'})
+            require_roles(user,READ_ROLES if method in {'GET','HEAD'} else {'ADMIN','PLANNER','MANAGER','SITE_CHIEF'})
             return
         if name.startswith('estimate_review_'):
             require_roles(user, {'ADMIN','PLANNER','ESTIMATOR'})
             return
         if name == 'daily_schedule_edit':
-            require_roles(user, READ_ROLES if method in {'GET','HEAD'} else PLAN_ROLES | {'MANAGER'})
+            require_roles(user, READ_ROLES if method in {'GET','HEAD'} else PLAN_ROLES | {'MANAGER','SITE_CHIEF','TECH_HEAD','SBO_HEAD'})
             return
         if name=='version_submit':
-            require_roles(user,{'ADMIN','MANAGER'});return
+            require_roles(user,{'ADMIN','PLANNER'});return
         action = match.kwargs.get('action') if name == 'global_action' else None
         if name == 'global_action':
             require_global_action(user, action)

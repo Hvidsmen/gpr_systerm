@@ -171,10 +171,12 @@ def month_matrix(version,month,work_forms,resource_forms):
 def add_month_resource(user,version,month,data):
     from .preparation import require_resource_input
     version=GlobalPlanVersion.objects.select_for_update().get(pk=version.pk,company=user.company)
-    require_resource_input(user,version);require_planning_object(user,version.construction_object_id)
+    from .formation_access import can_edit_resource
+    kind=data.get('kind');brigade=data.get('brigade')
+    if not can_edit_resource(user,version,kind,brigade):raise PermissionDenied('Этот ресурс не относится к вашему разделу формирования плана.')
+    require_planning_object(user,version.construction_object_id)
     from .bulk_add import editable_months
     if month not in editable_months(version):raise ValidationError('Месяц недоступен для редактирования.')
-    kind=data.get('kind')
     if kind not in {'labor','equipment','fuel'}:raise ValidationError('Выберите вид ресурса.')
     fields={'labor':{'brigade':data.get('brigade')},'equipment':{'equipment_type':data.get('equipment'),'equipment_number':''},'fuel':{'fuel_type':data.get('fuel'),'equipment_ref':''}}[kind]
     from .table_resource_crew import shifts
@@ -199,7 +201,9 @@ def remove_smg_entry(user,schedule,entry_id,revision,*,removal_actions=None):
     schedule=locked(user,schedule)
     entry=DailyScheduleEntry.objects.select_for_update().get(pk=entry_id,schedule=schedule)
     if entry.kind=='work':require_roles(user,PLAN_ROLES)
-    else:require_resource_input(user,schedule)
+    else:
+        from .formation_access import require_entry
+        require_entry(user,entry)
     if entry.revision!=revision:raise ValidationError('Строка уже изменена. Обновите страницу.')
     if schedule.locked_before:raise ValidationError('Строка содержит сохранённые закрытые дни. Удаление недоступно.')
     if entry.metadata.get('resource_assignment_id'):raise ValidationError('Измените назначение в интерфейсе связей.')

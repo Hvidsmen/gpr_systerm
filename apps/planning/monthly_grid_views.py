@@ -32,11 +32,15 @@ class WorkspaceMonths(View):
         from .approval_workflow import panel
         from .gpr_ui import path_context
         info={**context(request.user,version),**panel(version,request.user)}
+        can_launch=role_code(request.user) in {'ADMIN','PLANNER'} and version.status in {'DRAFT','REJECTED'} and bool(info.get('resource_preparation')) and info.get('resources_ready',False)
         from .work_selection_views import BranchForm
         from .daily_schedule_table_forms import AddEntryForm
         months=data['months'];initial={'months':[m.isoformat() for m in months]}
         branch=BranchForm(version=version,user=request.user,initial=initial,auto_id='months-work-%s')
         resource=AddEntryForm(schedule=version,user=request.user)
+        if data['can_resource']:
+            from .formation_access import configure_add_form
+            configure_add_form(resource,request.user,version)
         for field in resource.fields.values():field.widget.attrs.setdefault('class','form-select' if hasattr(field,'queryset') or hasattr(field,'choices') else 'form-control')
         return render(request,'planning/workspace_months.html',{
             **info,**path_context(version,info,request.user),**data,'version':version,'object':version,'workspace':version.workspace,
@@ -45,6 +49,7 @@ class WorkspaceMonths(View):
             'branch_action':reverse('planning:workspace_months',args=[version.pk]),'branch_post_action':'add_work',
             'branch_open_level':request.POST.get('branch_level','object') if add_kind=='work' else '',
             'gpr_single_page':True,'gpr_period_grid':True,'table_editable':data['can_work'] or data['can_resource'],'plan_can_add_work':data['can_work'],
+            'plan_can_launch_approval':can_launch,
             'selected_month':months[0] if months else version.start_date.replace(day=1),
             'add_work_form':add_form if add_kind=='work' else branch,'add_resource_form':add_form if add_kind=='resource' else resource,
             'add_kind':add_kind,'grid_colspan':len(months)+2,'resource_month_options':[{'month':month,'checked':add_kind!='resource' or month.isoformat() in request.POST.getlist('months')} for month in months],
@@ -59,7 +64,8 @@ class WorkspaceMonths(View):
         if action=='add_resource':
             if not can_resource:raise PermissionDenied
             from .daily_schedule_table_forms import AddEntryForm
-            return AddEntryForm(request.POST,schedule=version,user=request.user)
+            from .formation_access import configure_add_form
+            return configure_add_form(AddEntryForm(request.POST,schedule=version,user=request.user),request.user,version)
         raise PermissionDenied('Неизвестное действие.')
 
     @retry_sqlite_busy

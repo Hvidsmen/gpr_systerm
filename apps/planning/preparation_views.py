@@ -16,11 +16,15 @@ from . import preparation,estimate_review
 
 
 class HandoffForm(forms.Form):
-    manager=forms.ModelChoiceField(label='Руководитель проекта',queryset=User.objects.none())
+    manager=forms.ModelChoiceField(label='Основной участник: руководитель проекта / начальник участка',queryset=User.objects.none())
+    resource_editors=forms.ModelMultipleChoiceField(label='Дополнительные участники ресурсной части',queryset=User.objects.none(),required=False,
+        help_text='Оба могут вносить изменения. Подтверждения одного из назначенных участников достаточно.')
     estimator=forms.ModelChoiceField(label='Сметчик',queryset=User.objects.none())
     def __init__(self,*args,company,**kwargs):
         super().__init__(*args,**kwargs)
-        self.fields['manager'].queryset=User.objects.filter(company=company,is_active=True,role__code__in=['MANAGER','ADMIN'])
+        editors=User.objects.filter(company=company,is_active=True,role__code__in=['MANAGER','SITE_CHIEF','ADMIN'])
+        self.fields['manager'].queryset=editors
+        self.fields['resource_editors'].queryset=editors
         self.fields['estimator'].queryset=User.objects.filter(company=company,is_active=True,role__code__in=['ESTIMATOR','ADMIN'])
         for field in self.fields.values():field.widget.attrs['data-native-select']='true'
 
@@ -37,13 +41,13 @@ class PreparationView(View):
         owner=get_object_or_404(scope_queryset(model.objects.all(),request.user),pk=pk)
         record=preparation.record(owner);action=request.POST.get('action') if bound else None
         can_handoff=role_code(request.user) in {'ADMIN','PLANNER'} and owner.status in {'DRAFT','REJECTED'}
-        can_resources=owner.status in {'DRAFT','REJECTED'} and (role_code(request.user)=='ADMIN' or role_code(request.user)=='MANAGER' and record and record.manager_id==request.user.pk)
+        can_resources=owner.status in {'DRAFT','REJECTED'} and preparation.resource_editor_allowed(request.user,owner,record)
         if not bound and self.kind=='gpr' and can_resources and record and request.GET.get('legacy')!='1' and not (can_handoff and request.GET.get('handoff')=='1'):
             return redirect(reverse('planning:workspace_edit' if owner.workspace_id else 'planning:global_detail',args=[owner.pk])+'#work-resources')
         if not bound and self.kind=='smg' and can_resources and record and request.GET.get('legacy')!='1' and not (can_handoff and request.GET.get('handoff')=='1'):
             return redirect(reverse('planning:daily_schedule_detail',args=[owner.pk])+'#smg-matrix')
         latest_review=owner.estimate_reviews.order_by('-pk').first()
-        form=HandoffForm(request.POST if action=='handoff' else None,company=request.user.company,initial={'manager':record.manager_id if record else None,'estimator':latest_review.assigned_to_id if latest_review else None})
+        form=HandoffForm(request.POST if action=='handoff' else None,company=request.user.company,initial={'manager':record.manager_id if record else None,'resource_editors':list(record.resource_editors.values_list('pk',flat=True)) if record else [],'estimator':latest_review.assigned_to_id if latest_review else None})
         resource_forms=None;months=[];month=None
         if self.kind=='gpr':
             start,end=estimate_review.review_period(owner);months=months_between(start,end)
@@ -62,8 +66,8 @@ class PreparationView(View):
                 if action=='handoff':
                     if not can_handoff:raise PermissionDenied
                     if form.is_valid():
-                        preparation.handoff(request.user,owner,form.cleaned_data['manager'],form.cleaned_data['estimator'])
-                        messages.success(request,"План передан руководителю и сметчику. Задания созданы или обновлены.")
+                        preparation.handoff(request.user,owner,form.cleaned_data['manager'],form.cleaned_data['estimator'],form.cleaned_data['resource_editors'])
+                        messages.success(request,"План передан участникам формирования ресурсной части и сметчику. Задания созданы или обновлены.")
                         if self.kind=='gpr' and owner.workspace_id and request.POST.get('return_to_gpr')=='1':
                             return redirect(reverse('planning:workspace_edit',args=[owner.pk])+'?month='+month.isoformat())
                         if self.kind=='smg' and request.POST.get('return_to_smg')=='1':return redirect('planning:daily_schedule_detail',pk=owner.pk)
@@ -98,7 +102,7 @@ class PreparationView(View):
                         from .daily_schedule_approval import transition
                         transition(request.user,owner,'submit')
                         if request.POST.get('return_to_smg')=='1':return redirect('planning:daily_schedule_detail',pk=owner.pk)
-                    messages.success(request,'Руководитель запустил согласование плана.');return redirect(request.path)
+                    messages.success(request,'Планировщик проверил маршрут и запустил согласование плана.');return redirect(request.path)
                 else:raise ValidationError('Неизвестное действие.')
             except ValidationError as error:
                 for message in error.messages:messages.error(request,message)

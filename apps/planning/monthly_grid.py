@@ -25,9 +25,8 @@ def permissions(user,version):
     works=mutable and role_code(user) in {'ADMIN','PLANNER'}
     resources=False
     if mutable:
-        from .preparation import require_resource_input
-        try:require_resource_input(user,version);resources=True
-        except (PermissionDenied,ValidationError):pass
+        from .formation_access import can_edit_any_resource
+        resources=can_edit_any_resource(user,version)
     return works,resources
 
 
@@ -80,7 +79,12 @@ def matrix(user,version):
         for field,caption,item in fields:
             measure={'field':field,'caption':caption,'item_id':item.pk if item else '', 'norm':item.quantity_per_unit if item else '', 'cells':[],'step':'0.000001' if item else '1' if field=='count' else '0.001' if iswork else '0.01'}
             for month in months:
-                row=cells_by_month.get(month);allowed=(can_work if iswork else can_resource) and field!='ready'
+                row=cells_by_month.get(month)
+                if iswork:
+                    allowed=can_work and field!='ready'
+                else:
+                    from .formation_access import can_edit_resource
+                    allowed=can_resource and can_edit_resource(user,version,source.kind,source.brigade) and field!='ready'
                 if item and row and row.selected_item_ids and item.pk not in row.selected_item_ids:allowed=False;value=None
                 elif row:value=item_values(row).get(str(item.pk),ZERO) if item else row.quantity if iswork else getattr(row,field)
                 else:value=None
@@ -151,6 +155,9 @@ def save(user,version,changes):
         model=WorkMonthAllocation if iswork else ResourceMonthAllocation
         try:source=model.objects.select_related('work').get(pk=patch.get('source'),version=version,company=version.company) if iswork else model.objects.get(pk=patch.get('source'),version=version,company=version.company)
         except (model.DoesNotExist,ValueError,TypeError):raise ValidationError('Состав плана изменился. Обновите таблицу.')
+        if not iswork:
+            from .formation_access import require_month_row
+            require_month_row(user,version,source)
         if patch.get('key')!=identity(source):raise ValidationError('Строка изменилась. Обновите таблицу.')
         key=(patch['kind'],patch['key'],patch['month'])
         if key not in pending:

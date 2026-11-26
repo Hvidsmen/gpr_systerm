@@ -61,8 +61,10 @@ class DailyScheduleDetail(View):
         schedule=get_object_or_404(scope_queryset(DailySchedule.objects.select_related('construction_object','source').defer('source__snapshot'),request.user),pk=pk)
         from .preparation import record
         preparation=record(schedule)
-        resource_manager=role_code(request.user)=='ADMIN' or role_code(request.user)=='MANAGER' and preparation and preparation.manager_id==request.user.pk
-        resource_editor=role_code(request.user)=='PLANNER' or resource_manager
+        from .preparation import resource_editor_allowed
+        resource_manager=resource_editor_allowed(request.user,schedule,preparation)
+        from .formation_access import can_edit_any_resource,can_edit_resource,configure_add_form,entry_brigade
+        resource_editor=can_edit_any_resource(request.user,schedule)
         from .subobject_smg import parent_reference,comparison as parent_comparison
         is_subobject=parent_reference(schedule)
         entries=list(schedule.entries.select_related('gpr_work__section'))
@@ -70,7 +72,7 @@ class DailyScheduleDetail(View):
             entry.schedule=schedule
             entry.incomplete=entry.kind=='work' and len(entry.metadata.get('items',[]))<len(entry.metadata.get('valuation_items',entry.metadata.get('items',[])))
             entry.needs_gpr_mapping=is_subobject and entry.kind=='work' and (not entry.gpr_work_id or entry.gpr_work.section.construction_object_id!=schedule.source.construction_object_id)
-            entry.can_edit=(entry.kind=='work' and role_code(request.user) in PLAN_ROLES) or (entry.kind!='work' and resource_editor)
+            entry.can_edit=(entry.kind=='work' and role_code(request.user) in PLAN_ROLES) or (entry.kind!='work' and can_edit_resource(request.user,schedule,entry.kind,entry_brigade(entry)))
             entry.comparison=summary(entry)
         from .daily_schedule_matrix import matrix
         editable=schedule.status=='DRAFT' and (role_code(request.user) in PLAN_ROLES or resource_editor)
@@ -85,14 +87,17 @@ class DailyScheduleDetail(View):
         checked=check_valid(schedule,latest)
         role=role_code(request.user)
         from apps.accounts.approval_assignments import authorized
-        actions=[{'label':label,'action':SECTION_ACTIONS[section],'done':section in approved,'allowed':schedule.status=='SUBMITTED' and authorized(request.user,'SMG',section,assigned,construction_object=schedule.construction_object) and section not in approved} for section,label,assigned in SECTIONS if not (section in {'SECURITY','SBO'} and schedule.status in {'APPROVED','APPLIED','ARCHIVED'} and section not in approved)]
-        can_return_stage=any(authorized(request.user,'SMG',section,assigned,construction_object=schedule.construction_object) for section,_,assigned in SECTIONS)
-        approval={'smg_requires_approval':requires_approval(schedule),'smg_review':review,'smg_decisions':decisions,'smg_actions':actions,'smg_checked':checked,'smg_final_allowed':schedule.status=='SUBMITTED' and ready and authorized(request.user,'SMG','CEO','CEO',construction_object=schedule.construction_object),'smg_return_allowed':schedule.status=='SUBMITTED' and (role=='ADMIN' or can_return_stage or ready and authorized(request.user,'SMG','CEO','CEO',construction_object=schedule.construction_object))}
+        from .preparation import project_approver_allowed
+        actions=[{'label':label,'action':SECTION_ACTIONS[section],'done':section in approved,'allowed':schedule.status=='SUBMITTED' and (authorized(request.user,'SMG',section,assigned,construction_object=schedule.construction_object) or section=='PROJECT' and project_approver_allowed(request.user,schedule)) and section not in approved} for section,label,assigned in SECTIONS if not (section in {'SECURITY','SBO'} and schedule.status in {'APPROVED','APPLIED','ARCHIVED'} and section not in approved)]
+        can_return_stage=any(authorized(request.user,'SMG',section,assigned,construction_object=schedule.construction_object) for section,_,assigned in SECTIONS) or project_approver_allowed(request.user,schedule)
+        from apps.accounts.approval_assignments import route_preview
+        route=route_preview(schedule.company,'SMG',construction_object=schedule.construction_object)
+        approval={'smg_requires_approval':requires_approval(schedule),'smg_review':review,'smg_decisions':decisions,'smg_actions':actions,'smg_checked':checked,'smg_final_allowed':schedule.status=='SUBMITTED' and ready and authorized(request.user,'SMG','CEO','CEO',construction_object=schedule.construction_object),'smg_return_allowed':schedule.status=='SUBMITTED' and (role=='ADMIN' or can_return_stage or ready and authorized(request.user,'SMG','CEO','CEO',construction_object=schedule.construction_object)),'approval_route':route,'approval_route_ready':not any(row['missing'] for row in route)}
         from .daily_schedule_table_forms import AddEntryForm
         from .independent_smg_views import ReferenceForm
         reference_form=ReferenceForm(schedule=schedule,user=request.user) if editable and role_code(request.user) in PLAN_ROLES else None
         add_form=add_form or (AddEntryForm(schedule=schedule,user=request.user) if editable else None)
-        if add_form and role_code(request.user)=='MANAGER':add_form.fields['kind'].choices=[v for v in add_form.fields['kind'].choices if v[0]!='work']
+        if add_form and role_code(request.user) not in PLAN_ROLES:configure_add_form(add_form,request.user,schedule)
         from .object_plans import linked_plans
         from .smg_copy import CopyForm
         copy_form=CopyForm(user=request.user,schedule=schedule) if editable and (role_code(request.user) in PLAN_ROLES or schedule.source_id) else None
@@ -116,7 +121,7 @@ class DailyScheduleDetail(View):
         return render(request,'planning/daily_schedule_detail.html',dict(gpr_copy_form=copy_form,linked_object_plans=linked_plans(schedule,request.user),schedule=schedule,entries=entries,reference_form=reference_form,can_activate_smg=resource_manager and schedule.status=='APPROVED',can_edit=role_code(request.user) in PLAN_ROLES,table_editable=editable,add_form=add_form or (AddEntryForm(schedule=schedule,user=request.user) if editable else None),has_deviations=any(service.differences(e,e.rows) for e in entries),is_subobject_smg=is_subobject,has_direct_reference=bool(schedule.source_id) and not is_subobject,parent_work_choices=parent_choices,parent_comparison=parent_data,**approval,**layout,**editor,**unified))
 
     def post(self,request,pk):
-        require_roles(request.user,PLAN_ROLES | {'MANAGER'})
+        require_roles(request.user,PLAN_ROLES | {'MANAGER','SITE_CHIEF','TECH_HEAD','SBO_HEAD'})
         schedule=get_object_or_404(DailySchedule,pk=pk,company=request.user.company)
         if schedule.status!='DRAFT':raise PermissionDenied('СМГ зафиксирован. Создайте новую редакцию.')
         from .daily_schedule_table import save_table,add_entry
@@ -138,6 +143,9 @@ class DailyScheduleDetail(View):
                 return JsonResponse({'error':'; '.join(exc.messages) if isinstance(exc,ValidationError) else 'Неверный формат запроса.'},status=400)
         from .daily_schedule_table_forms import AddEntryForm
         form=AddEntryForm(request.POST,schedule=schedule,user=request.user)
+        if role_code(request.user) not in PLAN_ROLES:
+            from .formation_access import configure_add_form
+            configure_add_form(form,request.user,schedule)
         if form.is_valid():
             try:
                 add_entry(request.user,schedule,form.cleaned_data)
@@ -150,12 +158,17 @@ class DailyScheduleDetail(View):
 class DailyScheduleEdit(View):
     def display(self,request,pk,bound=False):
         require_roles(request.user,READ_ROLES)
-        if bound:require_roles(request.user,PLAN_ROLES | {'MANAGER'})
+        if bound:require_roles(request.user,PLAN_ROLES | {'MANAGER','SITE_CHIEF','TECH_HEAD','SBO_HEAD'})
         entry=get_object_or_404(DailyScheduleEntry.objects.select_related('schedule__source__construction_object').defer('schedule__source__snapshot'),pk=pk,schedule__in=scope_queryset(DailySchedule.objects.all(),request.user))
-        editable=entry.schedule.status=='DRAFT' and role_code(request.user) in (PLAN_ROLES if entry.kind=='work' else PLAN_ROLES|{'MANAGER'}) and not entry.metadata.get('resource_assignment_id')
+        if entry.kind=='work':
+            allowed=role_code(request.user) in PLAN_ROLES
+        else:
+            from .formation_access import can_edit_resource,entry_brigade
+            allowed=can_edit_resource(request.user,entry.schedule,entry.kind,entry_brigade(entry))
+        editable=entry.schedule.status=='DRAFT' and allowed and not entry.metadata.get('resource_assignment_id')
         if editable and entry.kind!='work':
-            from .preparation import require_resource_input
-            try:require_resource_input(request.user,entry.schedule)
+            from .formation_access import require_entry
+            try:require_entry(request.user,entry)
             except (PermissionDenied,ValidationError):editable=False
         if bound and not editable:raise PermissionDenied('Примененный СМГ зафиксирован. Создайте новую редакцию.')
         fields=[field for field in service.FIELDS[entry.kind] if entry.kind not in {'labor','equipment'} or field[0]=='planned_count']

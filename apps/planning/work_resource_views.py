@@ -101,7 +101,7 @@ class AssignmentForm(forms.ModelForm):
 class WorkResources(View):
     kind=None
     def display(self,request,pk,assignment_pk=None,bound=False):
-        require_roles(request.user,{'ADMIN','PLANNER','MANAGER'} if bound else READ_ROLES)
+        require_roles(request.user,{'ADMIN','PLANNER','MANAGER','SITE_CHIEF'} if bound else READ_ROLES)
         model=DailySchedule if self.kind=='smg' else GlobalPlanVersion
         owner=get_object_or_404(scope_queryset(model.objects.all(),request.user),pk=pk)
         instance=get_object_or_404(owner.resource_assignments,pk=assignment_pk) if assignment_pk else WorkResourceAssignment()
@@ -122,7 +122,8 @@ class WorkResources(View):
             for name in ['start_date','work','work_item','equipment_type','position','target_scope','targets']:form.fields[name].disabled=True
         from .preparation import record
         preparation=record(owner)
-        can_edit=(role_code(request.user)=='ADMIN' or role_code(request.user)=='MANAGER' and preparation and preparation.manager_id==request.user.pk) and owner.status in ['DRAFT','REJECTED']
+        from .preparation import resource_editor_allowed
+        can_edit=resource_editor_allowed(request.user,owner,preparation) and owner.status in ['DRAFT','REJECTED']
         if bound:
             try:
                 if request.POST.get('action')=='delete' and assignment_pk:

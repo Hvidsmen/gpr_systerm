@@ -11,7 +11,7 @@ def editor_context(user,schedule,approval):
     record=preparation.record(schedule);latest=schedule.estimate_reviews.order_by('-pk').first()
     role=role_code(user);draft=schedule.status=='DRAFT'
     resources=bool(record and record.resources_ready_at and record.resources_fingerprint==preparation.resource_signature(schedule))
-    manager=role=='ADMIN' or role=='MANAGER' and record and record.manager_id==user.pk
+    manager=preparation.resource_editor_allowed(user,schedule,record)
     status={'APPLIED':'APPROVED','ARCHIVED':'COMPLETED','CANCELLED':'COMPLETED'}.get(schedule.status,schedule.status)
     returned=draft and any(decision.action=='REJECT' for decision in approval['smg_decisions'])
     if returned:status='REJECTED'
@@ -26,9 +26,11 @@ def editor_context(user,schedule,approval):
         if approval['smg_final_allowed']:instruction='Проверьте согласованный СМГ и утвердите его либо верните на доработку с причиной.'
         elif sections:instruction='Проверьте свой раздел: '+', '.join(sections)+'. Согласуйте его или верните СМГ на доработку с причиной.'
         else:instruction='СМГ на согласовании. Дневные значения зафиксированы; ожидайте решений участников.'
-    elif role in PLAN_ROLES:instruction='Добавьте работы и предварительные ресурсы, заполните дни вручную или вставьте строку из Excel. Сохраните СМГ и передайте руководителю и сметчику. Ресурсы подтверждает руководитель.'
-    elif manager:instruction='Проверьте и дополните ресурсы, настройте связи с работами и подтвердите ресурсы. После проверки сметчиком отправьте СМГ на согласование.'
-    elif role=='ESTIMATOR':instruction='Проверьте состав работ и цены в задании сметчика. Ресурсы параллельно подтверждает руководитель проекта.'
+    elif role in PLAN_ROLES:instruction='Заполните работы, объёмы и дни, организуйте совместное формирование ресурсов. После подтверждения ресурсов и проверки сметчика проверьте маршрут и запустите согласование.'
+    elif manager:instruction='Проверьте и дополните ресурсы, настройте связи с работами и подтвердите ресурсную часть. Согласование запускает планировщик.'
+    elif role=='TECH_HEAD':instruction='Скорректируйте технику, ГСМ и должности назначенных групп. Остальные строки доступны для просмотра.'
+    elif role=='SBO_HEAD':instruction='Скорректируйте должности назначенных групп. Остальные строки доступны для просмотра.'
+    elif role=='ESTIMATOR':instruction='Проверьте состав работ и цены в задании сметчика. Ресурсная часть формируется параллельно.'
     else:instruction='Просмотрите дневной план, связи и текущий этап согласования.'
     path['gpr_instruction']=('СМГ возвращён. Исправьте замечания в истории согласования. ' if returned else '')+instruction
     months={}
@@ -39,5 +41,6 @@ def editor_context(user,schedule,approval):
     return {**catalogue_context(user,schedule),**path,**preparation.task_context(user,schedule),'smg_can_return_applied':role=='ADMIN' and schedule.status=='APPLIED',
         'smg_return_comment':max(rejections,key=lambda d:d.pk).comment if returned and rejections else '',
         'smg_resource_ready':resources,'smg_can_confirm':draft and bool(manager and record),'smg_can_handoff':draft and role in PLAN_ROLES,
-        'smg_handoff_form':HandoffForm(company=user.company,initial={'manager':record.manager_id if record else None,'estimator':latest.assigned_to_id if latest else None}) if draft and role in PLAN_ROLES else None,
+        'smg_can_launch_approval':draft and role in PLAN_ROLES and bool(record) and resources,
+        'smg_handoff_form':HandoffForm(company=user.company,initial={'manager':record.manager_id if record else None,'resource_editors':list(record.resource_editors.values_list('pk',flat=True)) if record else [],'estimator':latest.assigned_to_id if latest else None}) if draft and role in PLAN_ROLES else None,
         'smg_latest_review':latest if role in {'ADMIN','PLANNER','ESTIMATOR'} else None,'smg_month_choices':list(months.values())}

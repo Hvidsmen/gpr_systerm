@@ -177,8 +177,8 @@ def save_entry(user,entry,values,revision,*,sync_crew=True):
     entry=DailyScheduleEntry.objects.select_for_update().select_related('schedule').get(pk=entry.pk,schedule=schedule)
     if entry.kind=='work':require_roles(user,PLAN_ROLES)
     else:
-        from .preparation import require_resource_input
-        require_resource_input(user,schedule)
+        from .formation_access import require_entry
+        require_entry(user,entry)
     if entry.metadata.get('resource_assignment_id'):raise ValidationError('Измените количество техники, смены или экипаж в разделе «Ресурсы работ и объекта».')
     if entry.revision!=revision:raise ValidationError('Строка изменена в другой вкладке. Обновите страницу.')
     if len(values)!=len(identities(entry)):raise ValidationError('Заполните все дни.')
@@ -205,7 +205,7 @@ def save_entry(user,entry,values,revision,*,sync_crew=True):
 
 @transaction.atomic
 def activate(user,schedule):
-    require_roles(user,{'ADMIN','MANAGER'})
+    require_roles(user,{'ADMIN','MANAGER','SITE_CHIEF'})
     if schedule.status=='DRAFT':
         from .preparation import require_submission
         require_submission(user,schedule)
@@ -215,7 +215,8 @@ def activate(user,schedule):
     from .preparation import record
     from core.permissions import role_code
     preparation=record(schedule)
-    if preparation and role_code(user)!='ADMIN' and preparation.manager_id!=user.pk:raise PermissionDenied('Применить СМГ может назначенный руководитель проекта.')
+    from .preparation import resource_editor_allowed
+    if preparation and not resource_editor_allowed(user,schedule,preparation):raise PermissionDenied('Применить СМГ может назначенный руководитель проекта или начальник участка.')
     from core.permissions import require_planning_object
     require_planning_object(user,schedule.construction_object_id)
     from .daily_schedule_approval import current,requires_approval

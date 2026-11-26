@@ -1,0 +1,18 @@
+<details class="approval-route-preview">
+  <summary class="btn btn-outline-secondary btn-sm">Проверить согласующих</summary>
+  <div class="card card-body mt-2" style="min-width:min(520px,90vw)">
+    <strong class="mb-2">Маршрут согласования</strong>
+    <ul class="mb-2">
+      {% for row in approval_route %}
+        <li class="{% if row.missing %}text-danger{% endif %}">
+          {{ row.label }} — {% if row.owner %}{{ row.owner.full_name }}{% else %}<strong>не назначен</strong>{% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+    {% if approval_route_ready %}
+      <p class="small text-success mb-0">Все обязательные согласующие определены. После запуска версия будет зафиксирована.</p>
+    {% else %}
+      <p class="small text-danger mb-0">Запуск заблокирован. Администратор должен назначить отсутствующих согласующих.</p>
+    {% endif %}
+  </div>
+</details>

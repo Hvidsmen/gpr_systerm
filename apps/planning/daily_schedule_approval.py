@@ -29,8 +29,6 @@ def next_action(schedule):
 
 def planner(schedule,estimate):
     from .preparation import record
-    preparation=record(schedule)
-    if preparation:return preparation.manager
     candidates=[schedule.created_by,estimate.created_by]
     for role in ['PLANNER','ADMIN']:
         for candidate in candidates:
@@ -48,7 +46,7 @@ def handoff(estimate):
     if valid and schedule.status=='DRAFT':
         assigned=planner(schedule,estimate)
         actor_id=estimate.events.filter(action='APPROVED').order_by('-pk').values_list('actor_id',flat=True).first() or estimate.assigned_to_id
-        task=ensure(estimate.company,key,kind='SUBMISSION',title=next_action(schedule),description='Проверка работ сметчика завершена. Руководитель определяет ресурсы и запускает согласование. Если месячные итоги совпадают с ГПР, сохраните СМГ как оперативный план. При отклонениях или отсутствии ГПР требуется согласование всех профильных служб, включая Службу СБО, и генерального директора.',assigned_to=assigned,target_role='' if assigned else 'MANAGER',created_by_id=actor_id,schedule=schedule,estimate=estimate,construction_object_id=schedule.construction_object_id,due_date=timezone.localdate()+timedelta(days=1))
+        task=ensure(estimate.company,key,kind='SUBMISSION',title=next_action(schedule),description='Проверка работ сметчика завершена. Планировщик проверяет ресурсную часть и маршрут, затем запускает согласование. Если месячные итоги совпадают с ГПР, сохраните СМГ как оперативный план. При отклонениях или отсутствии ГПР требуется согласование всех профильных служб и генерального директора.',assigned_to=assigned,target_role='' if assigned else 'PLANNER',created_by_id=actor_id,schedule=schedule,estimate=estimate,construction_object_id=schedule.construction_object_id,due_date=timezone.localdate()+timedelta(days=1))
         if task.title!=next_action(schedule):task.title=next_action(schedule);task.save(update_fields=['title'])
         if task.status=='SUPERSEDED':state(task,'OPEN')
     elif existing and existing.status in ACTIVE:
@@ -72,7 +70,9 @@ def sync(schedule):
         for task in WorkTask.objects.filter(schedule_review=review,kind='APPROVAL',status__in=ACTIVE):state(task,'DONE')
         key=f'smg-apply:{schedule.pk}:{review.number}'
         if schedule.status=='APPROVED':
-            assigned=planner(schedule,latest) if latest else schedule.created_by
+            from .preparation import record
+            preparation=record(schedule)
+            assigned=preparation.manager if preparation else planner(schedule,latest) if latest else schedule.created_by
             ensure(schedule.company,key,kind='SUBMISSION',title='Применить согласованный дневной СМГ',assigned_to=assigned,created_by=review.submitted_by,schedule=schedule,schedule_review=review,construction_object_id=schedule.construction_object_id,due_date=timezone.localdate()+timedelta(days=1))
         else:
             for task in WorkTask.objects.filter(company=schedule.company,key=key,status__in=ACTIVE):state(task,'DONE')
@@ -107,6 +107,8 @@ def transition(user,schedule,action,comment=''):
     if action=='submit':
         from .preparation import require_submission
         require_submission(user,schedule)
+        from apps.accounts.approval_assignments import require_complete_route
+        require_complete_route(schedule.company,'SMG',construction_object=schedule.construction_object)
         if schedule.status!='DRAFT':raise ValidationError('На согласование отправляется только черновик СМГ.')
         if not requires_approval(schedule):raise ValidationError('Месячные итоги совпадают с ГПР: сохраните СМГ как оперативный план без нового согласования.')
         estimate_review.require_approved(schedule)
@@ -121,7 +123,11 @@ def transition(user,schedule,action,comment=''):
         if role!='ADMIN' and section in {s for s,_,_ in SECTIONS}|{'CEO'}:
             from apps.accounts.approval_assignments import authorized
             expected=dict((s,r) for s,_,r in SECTIONS).get(section,'CEO')
-            if not authorized(user,'SMG',section,expected,construction_object=schedule.construction_object):raise PermissionDenied('На этом этапе назначен другой согласующий.')
+            allowed=authorized(user,'SMG',section,expected,construction_object=schedule.construction_object)
+            if section=='PROJECT':
+                from .preparation import project_approver_allowed
+                allowed=allowed or project_approver_allowed(user,schedule)
+            if not allowed:raise PermissionDenied('На этом этапе назначен другой согласующий.')
         if schedule.status!='SUBMITTED' or not review:raise ValidationError('СМГ не находится на согласовании.')
         approved=set(review.decisions.filter(action='APPROVE').values_list('section',flat=True))
         if role=='CEO' and not REQUIRED_SECTIONS<=approved:raise ValidationError('Дождитесь согласования всех служб, включая Службу СБО.')

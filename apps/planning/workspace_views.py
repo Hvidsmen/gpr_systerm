@@ -297,15 +297,14 @@ class WorkspaceEdit(View):
             **kwargs,
         )
         from core.permissions import role_code
-        if role_code(request.user)=='MANAGER':
+        if role_code(request.user) not in {'ADMIN','PLANNER'}:
             for form in works:
                 # Keep the hidden identity enabled: Django needs the posted id to
                 # bind a read-only work row when the manager saves resources.
                 for name,field in form.fields.items():field.disabled=name!='id'
-            from .preparation import require_resource_input
-            try:require_resource_input(request.user,version)
-            except (PermissionDenied,ValidationError):
-                for form in resources:
+            from .formation_access import can_edit_resource
+            for form in resources:
+                if not can_edit_resource(request.user,version,form.instance.kind,form.instance.brigade):
                     for field in form.fields.values():field.disabled=True
         if role_code(request.user)=='PLANNER' and version.workspace.parent_gpr_id:
             for form in resources:
@@ -330,6 +329,8 @@ class WorkspaceEdit(View):
         from .work_selection_views import BranchForm
         from .resource_editor import context as resource_context
         resource_data=resource_context(request.user,version,selected)
+        from .formation_access import can_edit_any_resource,configure_add_form
+        resource_data['can_prepare_resources']=can_edit_any_resource(request.user,version)
         from .approval_workflow import panel
         from .gpr_ui import path_context
         approval=panel(version,request.user)
@@ -345,7 +346,8 @@ class WorkspaceEdit(View):
             'finance_summary':visible['finance_summary'],'plan_sections':visible['sections'],'plan_is_daily':False,'plan_kind_label':'ГПР','plan_month':selected,'days':[],
             'plan_years':sorted({m.year for m in allowed_months}),'plan_month_options':[{'month':m,'url':reverse('planning:workspace_edit',args=[version.pk])+'?month='+m.isoformat()} for m in allowed_months],
             'plan_can_add_work':can_work,'plan_can_add_resources':resource_data['can_prepare_resources'],'table_editable':can_work or resource_data['can_prepare_resources'],
-            'plan_add_form':AddEntryForm(schedule=version,user=request.user) if resource_data['can_prepare_resources'] else None,
+            'plan_add_form':configure_add_form(AddEntryForm(schedule=version,user=request.user),request.user,version) if resource_data['can_prepare_resources'] else None,
+            'plan_can_launch_approval':role_code(request.user) in {'ADMIN','PLANNER'} and version.status in {'DRAFT','REJECTED'} and bool(resource_data.get('resource_preparation')) and resource_data.get('resources_ready',False),
             'plan_add_url':reverse('planning:workspace_edit',args=[version.pk])+'?month='+selected.isoformat(),
             **resource_data, **approval, **path_context(version,{**resource_data,**approval},request.user),
             'object':version,'gpr_single_page':True,'editor_has_errors':request.method=='POST',
@@ -391,7 +393,7 @@ class WorkspaceEdit(View):
     def get(self, request, pk):
         from core.permissions import scope_queryset
         version=get_object_or_404(scope_queryset(GlobalPlanVersion.objects.filter(workspace__isnull=False),request.user),pk=pk)
-        if version.status not in {'DRAFT','REJECTED'} or role_code(request.user) not in {'ADMIN','PLANNER','MANAGER'}:
+        if version.status not in {'DRAFT','REJECTED'} or role_code(request.user) not in {'ADMIN','PLANNER','MANAGER','SITE_CHIEF','TECH_HEAD','SBO_HEAD'}:
             from .global_views import GlobalDetail
             request.gpr_single_page=True
             return GlobalDetail.as_view()(request,pk=pk)
@@ -405,18 +407,19 @@ class WorkspaceEdit(View):
 
     def post(self, request, pk):
         from core.permissions import require_roles
-        require_roles(request.user,{'ADMIN','PLANNER','MANAGER'})
+        require_roles(request.user,{'ADMIN','PLANNER','MANAGER','SITE_CHIEF','TECH_HEAD','SBO_HEAD'})
         version, selected, months = self.setup_version(request, pk)
-        if role_code(request.user)=='MANAGER':
-            from .preparation import require_resource_input
-            require_resource_input(request.user,version)
-            if request.POST.get('action') not in {None,'save','add_table_resource'}:raise PermissionDenied('Руководитель редактирует и подтверждает ресурсы. Работы составляет планировщик.')
+        if role_code(request.user) not in {'ADMIN','PLANNER'}:
+            from .formation_access import can_edit_any_resource
+            if not can_edit_any_resource(request.user,version):raise PermissionDenied('Вам не назначен раздел формирования ресурсов.')
+            if request.POST.get('action') not in {None,'save','add_table_resource'}:raise PermissionDenied('Профильные участники редактируют только ресурсную часть. Работы составляет планировщик.')
         from core.permissions import require_planning_object
         require_planning_object(request.user,version.construction_object_id)
         if request.POST.get('action')=='add_table_resource':
             from .daily_schedule_table_forms import AddEntryForm
             from .plan_workbench import add_month_resource
-            form=AddEntryForm(request.POST,schedule=version,user=request.user)
+            from .formation_access import configure_add_form
+            form=configure_add_form(AddEntryForm(request.POST,schedule=version,user=request.user),request.user,version)
             if form.is_valid():
                 try:
                     created=add_month_resource(request.user,version,selected,form.cleaned_data)
@@ -435,6 +438,10 @@ class WorkspaceEdit(View):
                     )
                     if locked.status not in ["DRAFT", "REJECTED"]:
                         raise ValidationError("Версия уже отправлена на согласование.")
+                    if role_code(request.user) not in {'ADMIN','PLANNER'} and any(form.has_changed() for form in works):raise PermissionDenied('Работы добавляет и изменяет только планировщик.')
+                    from .formation_access import require_month_row
+                    for form in resources:
+                        if form.has_changed():require_month_row(request.user,locked,form.instance)
                     works.save()
                     crew_edits={f.instance.pk:f.cleaned_data['count'] for f in resources if f.instance.pk and not f.cleaned_data.get('DELETE') and f.cleaned_data.get('kind')=='labor' and 'count' in f.changed_data}
                     crew_removed=set(locked.resource_allocations.filter(pk__in=[f.instance.pk for f in resources if f.cleaned_data.get('DELETE')],kind='labor').values_list('brigade_id',flat=True))

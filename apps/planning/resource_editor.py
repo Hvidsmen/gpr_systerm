@@ -159,7 +159,7 @@ def context(user,owner,month=None,snapshot=None):
     latest=owner.estimate_reviews.order_by('-pk').first()
     from core.permissions import role_code
     from .preparation_views import HandoffForm
-    handoff_form=HandoffForm(company=owner.company,initial={'manager':record.manager_id if record else None,'estimator':latest.assigned_to_id if latest else None}) if isinstance(owner,GlobalPlanVersion) and owner.workspace_id and owner.status in {'DRAFT','REJECTED'} and role_code(user) in {'ADMIN','PLANNER'} else None
+    handoff_form=HandoffForm(company=owner.company,initial={'manager':record.manager_id if record else None,'resource_editors':list(record.resource_editors.values_list('pk',flat=True)) if record else [],'estimator':latest.assigned_to_id if latest else None}) if isinstance(owner,GlobalPlanVersion) and owner.workspace_id and owner.status in {'DRAFT','REJECTED'} and role_code(user) in {'ADMIN','PLANNER'} else None
     from django.urls import reverse
     from apps.resources.catalogue_review import context as catalogue_context
     return {**catalogue_context(user,owner),'resource_assignment_url':reverse('planning:work_resources_save_smg' if isinstance(owner,DailySchedule) else 'planning:preparation_add_assignment',args=[owner.pk]),'gpr_handoff_form':handoff_form,'resources_ready':bool(record and record.resources_ready_at and record.resources_fingerprint==preparation.resource_signature(owner)),
