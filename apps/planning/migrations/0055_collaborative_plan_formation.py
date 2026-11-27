@@ -7,10 +7,11 @@ import django.db.models.deletion
 def copy_primary_editor(apps, schema_editor):
     PlanPreparation = apps.get_model('planning', 'PlanPreparation')
     through = PlanPreparation.resource_editors.through
-    through.objects.bulk_create([
-        through(planpreparation_id=row.pk, user_id=row.manager_id)
-        for row in PlanPreparation.objects.exclude(manager_id=None).iterator()
-    ], ignore_conflicts=True)
+    for row in PlanPreparation.objects.exclude(manager_id=None).iterator():
+        through.objects.get_or_create(
+            planpreparation_id=row.pk,
+            user_id=row.manager_id,
+        )
 
 
 class Migration(migrations.Migration):
