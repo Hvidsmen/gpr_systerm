@@ -31,22 +31,22 @@ class FactWindowBoundaryTests(SimpleTestCase):
         for code in ['DISPATCHER','PERSONNEL_DISPATCHER','MECHANIZATION_DISPATCHER','ALL_FACT_DISPATCHER','PLANNER','HR_HEAD','MANAGER']:
             with self.subTest(role=code):self.assertFalse(can_edit_fact_day(actor(code),future,today=today))
 
-    def test_fact_date_and_following_day_are_open_for_every_dispatcher_direction(self):
+    def test_fact_date_and_following_week_are_open_for_every_dispatcher_direction(self):
         day=date(2026,1,15)
         for code in ['DISPATCHER','PERSONNEL_DISPATCHER','MECHANIZATION_DISPATCHER','ALL_FACT_DISPATCHER']:
-            for today,allowed in [(date(2026,1,14),False),(day,True),(date(2026,1,16),True),(date(2026,1,17),False)]:
+            for today,allowed in [(date(2026,1,14),False),(day,True),(date(2026,1,21),True),(date(2026,1,22),True),(date(2026,1,23),False)]:
                 with self.subTest(role=code,today=today):self.assertEqual(can_edit_fact_day(actor(code),day,today=today),allowed)
         self.assertTrue(can_edit_fact_day(actor('ADMIN'),day,today=date(2026,3,1)))
 
     def test_month_year_and_leap_day_boundaries_use_calendar_days(self):
-        for day,deadline in [(date(2026,1,31),date(2026,2,1)),(date(2026,12,31),date(2027,1,1)),(date(2024,2,28),date(2024,2,29)),(date(2024,2,29),date(2024,3,1))]:
+        for day,deadline in [(date(2026,1,31),date(2026,2,7)),(date(2026,12,31),date(2027,1,7)),(date(2024,2,28),date(2024,3,6)),(date(2024,2,29),date(2024,3,7))]:
             self.assertEqual(edit_deadline(day),deadline)
             self.assertTrue(can_edit_fact_day(actor('DISPATCHER'),day,today=deadline))
             self.assertFalse(can_edit_fact_day(actor('DISPATCHER'),day,today=deadline+timedelta(days=1)))
 
     def test_cutoff_is_local_midnight_not_utc_midnight_or_24_hours_after_save(self):
         with timezone.override('Europe/Moscow'):
-            for now,allowed in [(datetime(2026,1,16,20,59,59,tzinfo=dt_timezone.utc),True),(datetime(2026,1,16,21,0,0,tzinfo=dt_timezone.utc),False)]:
+            for now,allowed in [(datetime(2026,1,22,20,59,59,tzinfo=dt_timezone.utc),True),(datetime(2026,1,22,21,0,0,tzinfo=dt_timezone.utc),False)]:
                 with patch('django.utils.timezone.now',return_value=now):self.assertEqual(can_edit_fact_day(actor('DISPATCHER'),date(2026,1,15)),allowed)
 
 
@@ -93,7 +93,7 @@ class FactWindowIntegrationTests(TestCase):
 
     def test_repeated_colleague_corrections_remain_available_even_after_confirmation(self):
         with patch('django.utils.timezone.localdate',return_value=self.day):self.assertEqual(self.post_work('DISPATCHER',5,'confirm').status_code,302)
-        with patch('django.utils.timezone.localdate',return_value=self.day+timedelta(days=1)):
+        with patch('django.utils.timezone.localdate',return_value=self.day+timedelta(days=7)):
             self.assertEqual(self.post_work('SECOND',4).status_code,302)
             self.assertEqual(self.post_work('SECOND',3).status_code,302)
         row=DailyFact.objects.get();self.assertEqual(row.reported_by_id,self.users['DISPATCHER'].pk);self.assertEqual(row.actual_quantity,3)
@@ -105,14 +105,14 @@ class FactWindowIntegrationTests(TestCase):
             self.assertEqual(self.post_work('DISPATCHER').status_code,302)
             stale=self.payload('SECOND','works');stale['works-0-actual_quantity']='4';stale['works-0-deviation_reason']=self.reason.pk
         before=FactRevision.objects.count()
-        with patch('django.utils.timezone.localdate',return_value=self.day+timedelta(days=2)):
+        with patch('django.utils.timezone.localdate',return_value=self.day+timedelta(days=8)):
             self.assertEqual(self.client.post(self.url,stale).status_code,403)
             self.assertEqual(FactRevision.objects.count(),before)
             self.assertEqual(self.post_work('ADMIN',4).status_code,302)
         row=DailyFact.objects.get();self.assertEqual(row.actual_quantity,4);self.assertEqual(row.reported_by_id,self.users['DISPATCHER'].pk)
 
     def test_closed_day_is_read_only_in_all_three_workspaces(self):
-        with patch('django.utils.timezone.localdate',return_value=self.day+timedelta(days=2)):
+        with patch('django.utils.timezone.localdate',return_value=self.day+timedelta(days=8)):
             for role,path,data in [('DISPATCHER',self.url,{'construction_object':self.obj.pk,'date':str(self.day),'section':'works'}),('PERSONNEL_DISPATCHER',reverse('personnel:movements'),{'camp':self.housing_camp.pk,'date':str(self.day)}),('MECHANIZATION_DISPATCHER',reverse('production:transport_board'),{'camp':self.housing_camp.pk,'date':str(self.day)})]:
                 self.client.force_login(self.users[role]);response=self.client.get(path,data)
                 self.assertEqual(response.status_code,200)
@@ -128,7 +128,7 @@ class FactWindowIntegrationTests(TestCase):
         payload={'construction_object':self.obj.pk,'date':str(self.day),'session':session,'key':f'work:{self.work.pk}','action':'take'}
         url=reverse('production:work_claims')
         with patch('django.utils.timezone.localdate',return_value=self.day):self.assertEqual(self.client.post(url,payload,content_type='application/json').status_code,200)
-        with patch('django.utils.timezone.localdate',return_value=self.day+timedelta(days=2)):
+        with patch('django.utils.timezone.localdate',return_value=self.day+timedelta(days=8)):
             payload['action']='renew';self.assertEqual(self.client.post(url,payload,content_type='application/json').status_code,403)
             payload['key']=f'employee:{self.employee.pk}:1';payload['action']='take';self.assertEqual(self.client.post(url,payload,content_type='application/json').status_code,403)
             self.assertEqual(self.client.get(url,payload).status_code,200)
@@ -140,7 +140,7 @@ class FactWindowIntegrationTests(TestCase):
             transport.move(user,camp,self.day,[self.machine.pk],'ARRIVAL',signed=transport.snapshot(user,camp,self.day))
             transport.save_day(user,camp,self.day,[self.machine.pk],'WORKED',signed=transport.snapshot(user,camp,self.day))
         arrival=self.machine.transport_events.get(kind='ARRIVAL');before=FactRevision.objects.count()
-        with patch('django.utils.timezone.localdate',return_value=self.day+timedelta(days=2)):
+        with patch('django.utils.timezone.localdate',return_value=self.day+timedelta(days=8)):
             signed=transport.snapshot(user,camp,self.day)
             attempts=[lambda:transport.save_day(user,camp,self.day,[self.machine.pk],'CLEAR',signed=signed),lambda:transport.set_condition(user,camp,self.day,[self.machine.pk],'REPAIR',signed=signed),lambda:transport.move(user,camp,self.day,[self.machine.pk],'DEPARTURE',signed=signed),lambda:transport.cancel_event(user,arrival,'Исправление',signed=signed),lambda:transport.claim(user,camp,self.day,[self.machine.pk],'acquire',uuid4())]
             for attempt in attempts:
@@ -151,9 +151,9 @@ class FactWindowIntegrationTests(TestCase):
         user=self.users['MECHANIZATION_DISPATCHER'];camp=self.housing_camp
         with patch('django.utils.timezone.localdate',return_value=self.day):
             transport.move(user,camp,self.day,[self.machine.pk],'ARRIVAL',signed=transport.snapshot(user,camp,self.day))
-        today=[self.day+timedelta(days=1)];real_lock=transport._lock
+        today=[self.day+timedelta(days=7)];real_lock=transport._lock
         def delayed_lock(*args):
-            result=real_lock(*args);today[0]=self.day+timedelta(days=2);return result
+            result=real_lock(*args);today[0]=self.day+timedelta(days=8);return result
         before=FactRevision.objects.count()
         with patch('django.utils.timezone.localdate',side_effect=lambda:today[0]),patch('apps.production.transport._lock',side_effect=delayed_lock):
             with self.assertRaisesMessage(ValidationError,'закрыты'):
@@ -163,7 +163,7 @@ class FactWindowIntegrationTests(TestCase):
     def test_personnel_can_record_backdated_departure_with_reason(self):
         user=self.users['PERSONNEL_DISPATCHER'];person=self.housing_person;stay=person.stays.get()
         stay.arrived_on=self.day-timedelta(days=10);stay.save()
-        today=self.day+timedelta(days=2)
+        today=self.day+timedelta(days=8)
         with patch('django.utils.timezone.localdate',return_value=today):
             housing.move(user,'DEPARTURE',self.housing_camp,self.day,[person],comment='Уточнение по ведомости')
             stay.refresh_from_db();self.assertEqual(stay.departed_on,self.day)
@@ -186,6 +186,6 @@ class FactWindowIntegrationTests(TestCase):
         user=self.users['MECHANIZATION_DISPATCHER']
         with patch('django.utils.timezone.localdate',return_value=self.day):
             assignment=equipment_operations.create_assignment(user,EquipmentAssignment(company=self.company,equipment=self.machine,construction_object=self.obj,start_date=self.day,work=self.work,activity='Работа'))
-        with patch('django.utils.timezone.localdate',return_value=self.day+timedelta(days=2)):
+        with patch('django.utils.timezone.localdate',return_value=self.day+timedelta(days=8)):
             for attempt in [lambda:equipment_operations.change_state(user,assignment,1,self.day,'REPAIR','Ремонт'),lambda:equipment_operations.close_assignment(user,assignment,1,self.day),lambda:equipment_operations.cancel_assignment(user,assignment,1,'Ошибка')]:
                 with self.assertRaisesMessage(ValidationError,'закрыты'):attempt()

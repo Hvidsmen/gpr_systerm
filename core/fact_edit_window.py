@@ -1,14 +1,15 @@
-"""Dispatchers edit the fact date and next day; admins may edit any date."""
+"""Dispatchers edit facts for one week; admins may edit any date."""
 from datetime import timedelta
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 from .permissions import DISPATCHER_ROLES,TRANSPORT_DISPATCHER,role_code
 
 WINDOWED_ROLES=DISPATCHER_ROLES|{TRANSPORT_DISPATCHER,'COMMANDANT'}
+FACT_EDIT_LAG_DAYS=7
 
 
 def edit_deadline(day):
-    return day + timedelta(days=1)
+    return day + timedelta(days=FACT_EDIT_LAG_DAYS)
 
 
 def can_edit_fact_day(user, day, *, today=None):
